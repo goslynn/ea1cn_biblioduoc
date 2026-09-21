@@ -1,0 +1,107 @@
+info:
+  name: list
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{BASE_URL}}/api/solicitudes"
+  params:
+    - name: mias
+      value: "true"
+      type: query
+      disabled: true
+      description: >-
+        Devuelve solo las solicitudes del portador del token. El backend
+        compara con el sujeto del JWT; no se manda ningun identificador de
+        usuario desde el cliente.
+    - name: estado
+      value: "RECIBIDA"
+      type: query
+      disabled: true
+      description: Filtra por estado -- RECIBIDA, APROBADA o RECHAZADA.
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        const esperado = Number(bru.getEnvVar("ESPERADO_LECTURA"));
+
+        test("responde lo que corresponde a esta credencial", function () {
+          expect(res.getStatus()).to.equal(esperado);
+        });
+
+        if (esperado === 200) {
+          test("devuelve una lista", function () {
+            expect(res.getBody()).to.be.an("array");
+          });
+
+          test("si hay filtro de estado, se respeta", function () {
+            const url = req.getUrl();
+            const cuerpo = res.getBody();
+            const filtro = /estado=([A-Z]+)/.exec(url);
+            if (filtro) {
+              expect(cuerpo.every((s) => s.estado === filtro[1])).to.equal(true);
+            }
+          });
+        }
+
+docs: |
+  # Listar solicitudes
+
+  `GET /api/solicitudes`. Sin parametros devuelve la bandeja completa del
+  equipo de biblioteca; con `mias=true`, solo las del portador del token.
+
+  ## Parametros
+
+  | Nombre | Tipo | Obligatorio | Descripcion |
+  |---|---|---|---|
+  | `mias` | query | no | `true` limita el resultado al sujeto del JWT |
+  | `estado` | query | no | `RECIBIDA`, `APROBADA` o `RECHAZADA` |
+
+  ## Respuestas
+
+  | Codigo | Cuando | Como reproducirlo aqui |
+  |---|---|---|
+  | 200 | credencial con el scope | entorno `aws` |
+  | 401 | token invalido o id token | entornos `aws-token-invalido` / `aws-id-token` |
+  | 403 | token valido sin el scope | entorno `aws-usuario-sin-scope` |
+
+  ## Por que puede venir vacia
+
+  Porque **no hay base de datos**. Si la Lambda se reciclo entre tu `create` y
+  este `list`, la lista sale vacia y no hay ningun error: el estado vive en
+  memoria. Vuelve a ejecutar `create` y despues este.
+
+examples:
+  - name: 200 con una solicitud
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": "SOL-0001",
+              "solicitante": "3n1k4kq9v8m2f7c0abcd1234",
+              "estado": "RECIBIDA",
+              "lineas": [ { "libroId": "L-001", "titulo": "Clean Code", "autor": "Robert C. Martin", "cantidad": 1 } ],
+              "dias": 14,
+              "motivo": "Material de apoyo para el proyecto de titulo",
+              "sede": "SAN_JOAQUIN",
+              "creadaEn": "2026-09-21T23:24:22.847991513Z",
+              "fechaDevolucion": "2026-10-05"
+            }
+          ]
+  - name: 200 lista vacia
+    description: >-
+      No es un error: la Lambda se reciclo y el estado en memoria se perdio, o
+      todavia no se ha creado ninguna solicitud.
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: "[]"

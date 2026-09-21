@@ -1,0 +1,43 @@
+info:
+  name: libros
+  type: folder
+  seq: 1
+  description: Catalogo de libros (solo lectura)
+
+request:
+  auth: inherit
+
+docs: |
+  # libros
+
+  El catalogo de la biblioteca. Es **estatico**: se carga al arrancar la
+  aplicacion desde `back/src/main/resources/libros.json` y no cambia hasta el
+  siguiente despliegue. No hay base de datos detras, y por eso la busqueda es
+  inmediata y no hay endpoints de escritura aqui.
+
+  ## Modelo
+
+  ```json
+  {
+    "id": "L-001",
+    "titulo": "Clean Code",
+    "autor": "Robert C. Martin",
+    "genero": "Informatica",
+    "anio": 2008,
+    "isbn": "978-0132350884",
+    "ejemplares": 4,
+    "ubicacion": "Estante A-1",
+    "sinopsis": "…",
+    "disponible": true
+  }
+  ```
+
+  `disponible` es un campo **calculado** por el backend (`ejemplares > 0`): asi
+  la regla vive en un solo sitio y el frontend no la repite.
+
+  ## Reglas
+
+  - Los ids van de `L-001` a `L-020`.
+  - `ejemplares: 0` significa que el titulo existe pero no se puede prestar:
+    pedirlo devuelve **409**, no 404.
+  - Todos los metodos exigen el scope `biblioteca-api/acceso`.

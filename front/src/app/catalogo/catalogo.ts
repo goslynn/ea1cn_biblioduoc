@@ -1,0 +1,78 @@
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+
+import { Libro } from './libro';
+import { LibrosService } from './libros.service';
+import { SeleccionService } from './seleccion.service';
+
+/**
+ * El catalogo: buscador, filtros y la lista de libros.
+ *
+ * El filtrado lo hace el BACKEND, no este componente. Podria hacerse aqui
+ * —son 20 libros— pero entonces el buscador no probaria nada: asi cada
+ * busqueda es una peticion real que atraviesa el interceptor, API Gateway,
+ * el authorizer y Spring.
+ */
+@Component({
+  selector: 'app-catalogo',
+  imports: [FormsModule, RouterLink],
+  templateUrl: './catalogo.html',
+})
+export class Catalogo implements OnInit {
+
+  private readonly libros = inject(LibrosService);
+  readonly seleccion = inject(SeleccionService);
+
+  texto = '';
+  genero = '';
+  soloDisponibles = false;
+
+  readonly resultados = signal<Libro[]>([]);
+  readonly generos = signal<string[]>([]);
+  readonly cargando = signal(false);
+  readonly error = signal('');
+
+  ngOnInit(): void {
+    this.libros.generos().subscribe({
+      next: (lista) => this.generos.set(lista),
+      error: () => this.generos.set([]),
+    });
+    this.buscar();
+  }
+
+  buscar(): void {
+    this.cargando.set(true);
+    this.error.set('');
+    this.libros.buscar(this.texto, this.genero, this.soloDisponibles).subscribe({
+      next: (libros) => {
+        this.resultados.set(libros);
+        this.cargando.set(false);
+      },
+      error: (fallo) => {
+        // Se muestra el codigo HTTP a proposito: 401 (sin token o token
+        // invalido), 403 (token sin el scope) y 500 se diagnostican distinto,
+        // y esconderlos detras de "algo salio mal" no ayuda a nadie.
+        this.error.set(this.describir(fallo.status));
+        this.resultados.set([]);
+        this.cargando.set(false);
+      },
+    });
+  }
+
+  limpiar(): void {
+    this.texto = '';
+    this.genero = '';
+    this.soloDisponibles = false;
+    this.buscar();
+  }
+
+  private describir(status: number): string {
+    switch (status) {
+      case 0:   return 'No hubo respuesta (error de red o de CORS). Revisa la pestana Network.';
+      case 401: return 'HTTP 401: falta el token o no es valido. Vuelve a iniciar sesion.';
+      case 403: return 'HTTP 403: el token es valido pero no trae el scope que exige la API.';
+      default:  return `HTTP ${status}: no se pudo cargar el catalogo.`;
+    }
+  }
+}

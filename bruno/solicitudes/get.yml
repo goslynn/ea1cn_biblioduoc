@@ -1,0 +1,99 @@
+info:
+  name: get
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{BASE_URL}}/api/solicitudes/:id"
+  params:
+    - name: id
+      value: "{{solicitudCreada}}"
+      type: path
+      description: >-
+        Id de la solicitud. Por defecto toma el que dejo la peticion "create"
+        de esta misma carpeta (variable de runtime, no de entorno). Escribe
+        `SOL-9999` para ver el 404.
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        const esperado = Number(bru.getEnvVar("ESPERADO_LECTURA"));
+
+        test("responde lo que corresponde a esta credencial", function () {
+          expect(res.getStatus()).to.equal(esperado);
+        });
+
+        if (esperado === 200) {
+          test("devuelve la solicitud que se pidio", function () {
+            const pedido = decodeURIComponent(req.getUrl().split("/").pop().split("?")[0]);
+            expect(res.getBody().id).to.equal(pedido);
+          });
+        }
+
+docs: |
+  # Obtener una solicitud por id
+
+  `GET /api/solicitudes/{id}`.
+
+  ## Parametros
+
+  | Nombre | Tipo | Obligatorio | Descripcion |
+  |---|---|---|---|
+  | `id` | path | si | Id correlativo, formato `SOL-0001` |
+
+  El valor por defecto es `{{solicitudCreada}}`, una variable de **runtime**
+  que deja la peticion `create` al ejecutarse. Por eso `bru run` funciona de
+  corrido: `create` (seq 1) se ejecuta antes que esta (seq 3). Si lanzas esta
+  peticion sola y nunca has ejecutado `create` en esta sesion, la variable no
+  existe y obtendras un 404.
+
+  ## Respuestas
+
+  | Codigo | Cuando | Como reproducirlo aqui |
+  |---|---|---|
+  | 200 | la solicitud existe en memoria | ejecutar `create` antes |
+  | 404 | el id no existe, o la Lambda se reciclo | `id = SOL-9999` |
+  | 401 | token invalido o id token | entornos `aws-token-invalido` / `aws-id-token` |
+  | 403 | token valido sin el scope | entorno `aws-usuario-sin-scope` |
+
+  ## Detalle
+
+  Igual que en el catalogo, el **404 lo genera Spring**: API Gateway no sabe
+  que ids existen. Recibirlo prueba que la peticion llego al backend.
+
+examples:
+  - name: 200 encontrada
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          {
+            "id": "SOL-0001",
+            "solicitante": "3n1k4kq9v8m2f7c0abcd1234",
+            "estado": "RECIBIDA",
+            "lineas": [ { "libroId": "L-001", "titulo": "Clean Code", "autor": "Robert C. Martin", "cantidad": 1 } ],
+            "dias": 14,
+            "motivo": "Material de apoyo para el proyecto de titulo",
+            "sede": "SAN_JOAQUIN",
+            "creadaEn": "2026-09-21T23:24:22.847991513Z",
+            "fechaDevolucion": "2026-10-05"
+          }
+  - name: 404 no existe
+    description: O nunca existio, o la Lambda se reciclo y el mapa en memoria se vacio.
+    response:
+      status: 404
+      statusText: Not Found
+      body:
+        type: json
+        data: |-
+          {
+            "status": 404,
+            "error": "Not Found",
+            "message": "No existe la solicitud SOL-9999",
+            "path": "/api/solicitudes/SOL-9999"
+          }

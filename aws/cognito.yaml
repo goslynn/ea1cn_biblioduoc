@@ -1,0 +1,345 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# ==============================================================================
+#  biblioteca / cognito.yaml   --   Identidad: User Pool, scope propio y clientes
+# ==============================================================================
+#
+#  QUE HACE
+#    * UserPool       -> el directorio de usuarios (email + password).
+#    * ResourceServer -> declara la API como recurso protegido y define el
+#                        CUSTOM SCOPE "biblioteca-api/acceso".
+#    * SpaClient      -> la app Angular. Cliente PUBLICO (sin secreto) que usa
+#                        Authorization Code + PKCE contra la Hosted UI.
+#    * M2mClient      -> cliente maquina a maquina (con secreto) que obtiene un
+#                        token por client_credentials, sin navegador. Es el que
+#                        usa la coleccion de Bruno.
+#    * UserPoolDomain -> la Hosted UI: la pantalla de login y los endpoints
+#                        /oauth2/authorize y /oauth2/token.
+#
+#  >>> POR QUE HACE FALTA UN RESOURCE SERVER (y no basta con el login) <<<
+#    Sin custom scope, TODO token valido del pool abre TODA la API: solo se
+#    puede distinguir "autenticado" de "anonimo". El scope introduce la segunda
+#    pregunta —"autenticado, si, pero ¿autorizado a esto?"— y es lo unico que
+#    permite obtener un 403 distinto de un 401.
+#
+#    Consecuencia tecnica, y es la buena: cuando api.yaml exige
+#    AuthorizationScopes, API Gateway pide que el token traiga el claim "scope".
+#    Un ID TOKEN no lo lleva NUNCA (no existe en OIDC), asi que el id_token deja
+#    de servir para llamar a la API sin que haya que configurar nada mas. El
+#    consejo "usa el access token" pasa de recomendacion a restriccion medible.
+#
+#  >>> LAS DOS FUENTES DE TOKEN, Y POR QUE SON DOS <<<
+#    * Navegador (SpaClient, code+PKCE)  -> access_token CON el custom scope.
+#      Exige una pantalla de login: no se puede automatizar.
+#    * M2mClient (client_credentials)    -> access_token CON el custom scope,
+#      en una sola llamada HTTP, sin usuario y sin navegador. Es lo que hace
+#      automatizable la matriz de pruebas.
+#    * admin-initiate-auth (usuario+clave por CLI) -> access_token SIN el custom
+#      scope: ese flujo NO emite scopes personalizados, solo
+#      "aws.cognito.signin.user.admin". Parece un defecto y es justo lo que
+#      hace falta para provocar el 403 de forma reproducible.
+#
+#  TRAMPAS
+#    * Los dos UserPoolClient necesitan DependsOn: ResourceServer. Sin eso
+#      CloudFormation los crea en paralelo y fallan con "scope does not exist".
+#    * client_credentials NO admite openid/email/profile: son scopes de OIDC y
+#      ahi no hay usuario. Solo el custom scope.
+#    * Cognito solo acepta callbacks https, con la unica excepcion de
+#      http://localhost. Por eso el sitio va en el endpoint REST de S3.
+#    * El CallbackURL debe coincidir CARACTER POR CARACTER con el redirect_uri
+#      que manda Amplify, /index.html incluido.
+#
+#  DEPENDE DE
+#    Nada. bootstrap.sh le pasa la URL del sitio calculada a partir del
+#    AccountId, antes incluso de que exista el bucket.
+#
+#  ENTREGA (Outputs)
+#    UserPoolArn    -> api.yaml (el authorizer)
+#    UserPoolId     -> backend.yaml (issuer-uri), bruno-env.sh, usuario demo
+#    SpaClientId    -> el frontend (Amplify) y bruno-env.sh
+#    M2mClientId    -> bruno-env.sh
+#    IssuerUrl      -> backend.yaml y api.yaml
+#    ScopeCompleto  -> api.yaml, backend.yaml, el frontend y Bruno
+#    HostedUiDomain -> el frontend y bruno-env.sh
+#
+#  DESPLIEGUE MANUAL
+#    aws cloudformation deploy \
+#      --template-file aws/cognito.yaml \
+#      --stack-name biblioteca-cognito \
+#      --parameter-overrides \
+#        ProjectName=biblioteca \
+#        "CallbackUrls=https://biblioteca-web-<ACCOUNT>.s3.us-east-1.amazonaws.com/index.html" \
+#        "LogoutUrls=https://biblioteca-web-<ACCOUNT>.s3.us-east-1.amazonaws.com/index.html"
+# ==============================================================================
+
+Description: >-
+  biblioteca - Cognito User Pool con Resource Server, custom scope, cliente SPA
+  (PKCE) y cliente M2M (client_credentials). Sin dependencias.
+
+Parameters:
+
+  ProjectName:
+    Type: String
+    Default: biblioteca
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: Solo minusculas, numeros y guiones (va en el dominio de la Hosted UI).
+    Description: Prefijo de nombres. Debe coincidir con el de los demas stacks.
+
+  ResourceServerId:
+    Type: String
+    Default: biblioteca-api
+    Description: >-
+      Identificador del Resource Server. Es el prefijo del scope completo:
+      <ResourceServerId>/<ScopeName>. Se deja como nombre corto y no como URL
+      para que el scope siga siendo legible en los tokens y en los logs.
+
+  ScopeName:
+    Type: String
+    Default: acceso
+    Description: >-
+      Nombre del custom scope. Se llama "acceso" y no "libros-read" porque
+      autoriza tambien el POST de solicitudes: un unico scope para toda la API.
+      Partirlo en lectura y escritura es la evolucion natural (ver README).
+
+  CallbackUrls:
+    Type: CommaDelimitedList
+    Description: >-
+      URLs a las que Cognito puede redirigir DESPUES del login. Deben ser https
+      (unica excepcion: http://localhost) y coincidir exactamente con el
+      redirect_uri que envia el cliente, /index.html incluido.
+
+  LogoutUrls:
+    Type: CommaDelimitedList
+    Description: URLs permitidas tras cerrar sesion. Normalmente las mismas que CallbackUrls.
+
+  DuracionTokenMinutos:
+    Type: Number
+    Default: 60
+    MinValue: 5
+    MaxValue: 1440
+    Description: >-
+      Vigencia del access token y del id token. 60 minutos es comodo para una
+      sesion de laboratorio; ojo, es tambien la vida util de los entornos de
+      Bruno, que se regeneran con aws/pipeline/bruno-env.sh.
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  #  El directorio de usuarios.
+  # ---------------------------------------------------------------------------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${ProjectName}-user-pool"
+
+      # El usuario se identifica por su correo, sin un "username" aparte.
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+
+      MfaConfiguration: "OFF"
+
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+
+      # Plataforma INTERNA: nadie se registra solo, las cuentas las crea la
+      # biblioteca. bootstrap.sh crea la cuenta de demostracion con
+      # admin-create-user, que es justo lo que este flag permite y el
+      # autoservicio no.
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+      DeletionProtection: INACTIVE   # para que teardown.sh pueda borrarlo
+
+  # ---------------------------------------------------------------------------
+  #  EL RESOURCE SERVER: la pieza que define el custom scope.
+  #  El literal que importa es <Identifier>/<ScopeName>, y tiene que ser
+  #  identico en CUATRO sitios: AllowedOAuthScopes de los dos clientes de aqui
+  #  abajo, AuthorizationScopes de los metodos en api.yaml, el hasAuthority de
+  #  Spring Security y la lista de scopes de Amplify en el frontend. Un
+  #  caracter distinto en cualquiera de ellos y el resultado es un 403 que
+  #  cuesta horas de encontrar.
+  # ---------------------------------------------------------------------------
+  ResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: !Ref ResourceServerId
+      Name: !Sub "${ProjectName} API"
+      Scopes:
+        - ScopeName: !Ref ScopeName
+          ScopeDescription: Acceso al catalogo y a las solicitudes de prestamo
+
+  # ---------------------------------------------------------------------------
+  #  CLIENTE SPA: el que usa Angular desde el navegador.
+  # ---------------------------------------------------------------------------
+  SpaClient:
+    Type: AWS::Cognito::UserPoolClient
+    # Sin esto CloudFormation lo crea en paralelo con el Resource Server y
+    # falla con "scope does not exist".
+    DependsOn: ResourceServer
+    Properties:
+      ClientName: !Sub "${ProjectName}-spa"
+      UserPoolId: !Ref UserPool
+
+      # SIN SECRETO, y es obligatorio: cualquier secreto incrustado en
+      # JavaScript es publico en cuanto alguien abre DevTools. La seguridad la
+      # aporta PKCE, que Amplify activa solo con responseType "code".
+      GenerateSecret: false
+
+      AllowedOAuthFlowsUserPoolClient: true
+
+      # "code" = Authorization Code Grant. El navegador recibe un codigo de un
+      # solo uso y lo canjea por tokens en una segunda llamada. En "implicit"
+      # el token viajaria en la barra de direcciones y quedaria en el historial.
+      AllowedOAuthFlows:
+        - code
+
+      # Los tres scopes OIDC (identidad) MAS el custom scope (autorizacion).
+      # Sin el custom scope aqui, el usuario se autentica pero su access token
+      # sale sin el claim que la API exige: 403.
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+        - !Sub "${ResourceServerId}/${ScopeName}"
+
+      SupportedIdentityProviders:
+        - COGNITO
+
+      CallbackURLs: !Ref CallbackUrls
+      LogoutURLs: !Ref LogoutUrls
+
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        # Flujo admin: cambia usuario+password por tokens en UNA llamada, sin
+        # navegador. Solo se puede invocar con credenciales de AWS
+        # (admin-initiate-auth), nunca desde el browser, asi que no debilita el
+        # login del frontend. Existe para que bruno-env.sh pueda fabricar el
+        # caso "token valido SIN el custom scope", que es el que produce el 403.
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+
+      # No revela si un email existe cuando el login falla.
+      PreventUserExistenceErrors: ENABLED
+
+      AccessTokenValidity: !Ref DuracionTokenMinutos
+      IdTokenValidity: !Ref DuracionTokenMinutos
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  # ---------------------------------------------------------------------------
+  #  CLIENTE M2M: el que usa el pipeline de pruebas (Bruno).
+  #  No hay usuario detras: es el propio sistema el que se identifica con un
+  #  client_id y un client_secret. Es el unico modo de conseguir un token CON
+  #  custom scope sin abrir un navegador.
+  # ---------------------------------------------------------------------------
+  M2mClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: ResourceServer
+    Properties:
+      ClientName: !Sub "${ProjectName}-m2m"
+      UserPoolId: !Ref UserPool
+
+      # CON secreto: aqui si tiene sentido, porque este cliente corre en una
+      # terminal o en un runner de CI, no en un navegador. El secreto NO se
+      # publica como Output del stack: bruno-env.sh lo lee en el momento con
+      # "aws cognito-idp describe-user-pool-client".
+      GenerateSecret: true
+
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - client_credentials
+
+      # SOLO el custom scope. client_credentials no admite openid/email/profile
+      # porque no hay identidad de usuario que describir: el stack falla si se
+      # intenta.
+      AllowedOAuthScopes:
+        - !Sub "${ResourceServerId}/${ScopeName}"
+
+      AccessTokenValidity: !Ref DuracionTokenMinutos
+      TokenValidityUnits:
+        AccessToken: minutes
+
+  # ---------------------------------------------------------------------------
+  #  La Hosted UI. Sin dominio no hay pantalla de login ni endpoints OAuth2.
+  #  El AccountId en el prefijo evita chocar con el dominio de otro alumno: es
+  #  unico en toda la region, no solo en tu cuenta.
+  # ---------------------------------------------------------------------------
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub "${ProjectName}-${AWS::AccountId}"
+      UserPoolId: !Ref UserPool
+
+Outputs:
+
+  UserPoolId:
+    Description: ID del User Pool. Lo usan bruno-env.sh y la creacion del usuario demo.
+    Value: !Ref UserPool
+
+  UserPoolArn:
+    Description: ARN del pool. Es el ProviderARN del authorizer de api.yaml.
+    Value: !GetAtt UserPool.Arn
+
+  SpaClientId:
+    Description: Cliente publico. Va en la configuracion de Amplify del frontend.
+    Value: !Ref SpaClient
+
+  M2mClientId:
+    Description: >-
+      Cliente maquina a maquina. Su SECRETO no se publica aqui a proposito:
+      un Output es visible para cualquiera que pueda hacer describe-stacks.
+      bruno-env.sh lo obtiene con describe-user-pool-client.
+    Value: !Ref M2mClient
+
+  IssuerUrl:
+    Description: >-
+      Emisor de los JWT. De aqui descargan las claves publicas (JWKS) tanto API
+      Gateway como Spring Security, cada uno por su cuenta y sin credenciales.
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+
+  ScopeCompleto:
+    Description: >-
+      EL literal que tiene que coincidir en los cuatro sitios: api.yaml,
+      Spring Security, Amplify y los dos App Clients.
+    Value: !Sub "${ResourceServerId}/${ScopeName}"
+
+  HostedUiDomain:
+    Description: Base de la Hosted UI (login y endpoints OAuth2).
+    Value: !Sub "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+
+  TokenUrl:
+    Description: Endpoint donde se canjea el code, y donde el cliente M2M pide su token.
+    Value: !Sub "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
+
+  LoginUrl:
+    Description: >-
+      URL de login lista para pegar en el navegador, util para comprobar que la
+      Hosted UI carga sin depender del frontend.
+    Value: !Sub
+      - "${Dominio}/oauth2/authorize?response_type=code&client_id=${Cliente}&scope=openid+email+profile+${Scope}&redirect_uri=${Redirect}"
+      - Dominio: !Sub "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+        Cliente: !Ref SpaClient
+        Scope: !Sub "${ResourceServerId}/${ScopeName}"
+        Redirect: !Select [0, !Ref CallbackUrls]

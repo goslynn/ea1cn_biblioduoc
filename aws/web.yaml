@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# ==============================================================================
+#  biblioteca / web.yaml   --   Hosting del frontend Angular en S3
+# ==============================================================================
+#
+#  QUE HACE
+#    * SiteBucket       -> bucket S3 con el Angular ya compilado (ng build).
+#    * SiteBucketPolicy -> politica que permite a CUALQUIERA leer los objetos.
+#                          Es un sitio publico: solo contiene HTML, CSS y JS.
+#
+#  >>> POR QUE EL ENDPOINT REST Y NO EL "WEBSITE ENDPOINT" <<<
+#    S3 ofrece dos formas de servir un bucket:
+#
+#      website endpoint  http://<bucket>.s3-website-<region>.amazonaws.com
+#                        Tiene redireccion de errores a index.html... pero es
+#                        HTTP PURO, sin TLS. Cognito RECHAZA cualquier callback
+#                        que no sea https (unica excepcion: http://localhost).
+#
+#      endpoint REST     https://<bucket>.s3.<region>.amazonaws.com/index.html
+#                        HTTPS de verdad, aceptado por Cognito. No reescribe
+#                        rutas desconocidas a index.html.
+#
+#    Se usa el REST, y por eso el frontend enruta con withHashLocation():
+#    todas las vistas viven en .../index.html#/catalogo y el navegador nunca
+#    le pide a S3 una ruta que no existe como objeto.
+#
+#  >>> POR QUE EL NOMBRE ES PREDECIBLE <<<
+#    Hay un ciclo aparente: Cognito necesita la URL del sitio (lista blanca de
+#    callbacks) y el sitio necesita los datos de Cognito. Se rompe aqui: el
+#    bucket se llama SIEMPRE "<proyecto>-web-<AccountId>", asi que bootstrap.sh
+#    calcula la URL con un solo "sts get-caller-identity", ANTES de que el
+#    bucket exista, y se la pasa a cognito.yaml. Cero doble despliegue.
+#
+#  TRAMPAS
+#    * Para que una bucket policy publica surta efecto hay que APAGAR
+#      BlockPublicPolicy y RestrictPublicBuckets. Con los valores por defecto
+#      (todo en true) la politica se acepta... y no sirve de nada: 403.
+#    * CloudFormation no borra un bucket con objetos: teardown.sh lo vacia.
+#
+#  DEPENDE DE
+#    Nada.
+#
+#  ENTREGA (Outputs)
+#    SiteBucketName -> aws/pipeline/publish-web.sh (destino del s3 sync)
+#    SiteUrl        -> el navegador
+#    SiteOrigin     -> cognito.yaml (callbacks) y api.yaml (CORS)
+#
+#  DESPLIEGUE MANUAL
+#    aws cloudformation deploy \
+#      --template-file aws/web.yaml \
+#      --stack-name biblioteca-web \
+#      --parameter-overrides ProjectName=biblioteca
+# ==============================================================================
+
+Description: >-
+  biblioteca - Bucket S3 publico que sirve el frontend Angular por su endpoint
+  REST (HTTPS). Sin dependencias.
+
+Parameters:
+
+  ProjectName:
+    Type: String
+    Default: biblioteca
+    AllowedPattern: "^[a-z0-9-]+$"
+    Description: Prefijo de nombres. Debe coincidir con el de los demas stacks.
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  #  El bucket del sitio.
+  # ---------------------------------------------------------------------------
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      # Nombre predecible: es lo que rompe el ciclo con Cognito (ver cabecera).
+      BucketName: !Sub "${ProjectName}-web-${AWS::AccountId}"
+
+      # Se apagan los cuatro bloqueos porque este bucket SI debe ser legible
+      # por todo el mundo. Es la diferencia deliberada con artifacts.yaml, que
+      # los tiene los cuatro en true.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+      # Se declara aunque el endpoint REST no use la redireccion de errores:
+      # deja el bucket listo si algun dia se pone CloudFront delante, que si la
+      # aprovecha para devolver index.html en las rutas del SPA.
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ---------------------------------------------------------------------------
+  #  Lectura publica de los objetos. Solo s3:GetObject: nadie de fuera puede
+  #  listar el bucket, ni subir, ni borrar. Publicar el JS de un SPA es normal;
+  #  el frontend no guarda ningun secreto (por eso el App Client de Cognito se
+  #  crea SIN client_secret y usa PKCE).
+  # ---------------------------------------------------------------------------
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LecturaPublicaDelSitio
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "${SiteBucket.Arn}/*"
+
+Outputs:
+
+  SiteBucketName:
+    Description: Bucket donde aws/pipeline/publish-web.sh hace el s3 sync.
+    Value: !Ref SiteBucket
+
+  SiteOrigin:
+    Description: >-
+      ORIGEN del sitio (esquema + host, sin barra final ni ruta). Este valor
+      exacto es el que va en AllowOrigins de api.yaml: el navegador compara el
+      header Origin caracter por caracter.
+    Value: !Sub "https://${SiteBucket}.s3.${AWS::Region}.amazonaws.com"
+
+  SiteUrl:
+    Description: >-
+      URL para abrir en el navegador. Tambien es el CallbackURL de Cognito, y
+      tiene que coincidir EXACTAMENTE, /index.html incluido.
+    Value: !Sub "https://${SiteBucket}.s3.${AWS::Region}.amazonaws.com/index.html"

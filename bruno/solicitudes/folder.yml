@@ -1,0 +1,58 @@
+info:
+  name: solicitudes
+  type: folder
+  seq: 2
+  description: Solicitudes de prestamo (lectura y escritura)
+
+request:
+  auth: inherit
+
+docs: |
+  # solicitudes
+
+  Una solicitud pide **uno o varios** libros del catalogo, por un numero de
+  dias, con un motivo y una sede de retiro.
+
+  ## Modelo de entrada (POST)
+
+  ```json
+  {
+    "items": [ { "libroId": "L-001", "cantidad": 1 } ],
+    "dias": 14,
+    "motivo": "Material de apoyo para el proyecto de titulo",
+    "sede": "SAN_JOAQUIN"
+  }
+  ```
+
+  ## Reglas de negocio (cada una produce un codigo distinto)
+
+  | Regla | Si no se cumple |
+  |---|---|
+  | al menos 1 item, maximo 5 titulos | 400 |
+  | `cantidad` entre 1 y 3 por titulo | 400 |
+  | `dias` entre 1 y 30 | 400 |
+  | `motivo` entre 10 y 300 caracteres | 400 |
+  | `sede` debe ser una de las cinco | 400 |
+  | el `libroId` debe existir | 404 |
+  | el libro debe tener ejemplares | 409 |
+
+  Sedes validas: `SAN_JOAQUIN`, `PLAZA_OESTE`, `PUENTE_ALTO`, `VINA_DEL_MAR`,
+  `CONCEPCION`.
+
+  ## Lo que NO se manda
+
+  El **solicitante**. Lo pone el servidor leyendolo del JWT ya validado (claim
+  `sub` si es una persona, `client_id` si es un cliente maquina a maquina). Si
+  viajara en el cuerpo, cualquiera podria pedir libros a nombre de otro.
+
+  Por eso, con el entorno `aws` veras `"solicitante"` con el id del cliente M2M,
+  y desde el navegador veras el `sub` del usuario que inicio sesion.
+
+  ## Persistencia: no hay
+
+  Las solicitudes viven en un `ConcurrentHashMap` dentro de la Lambda. Se
+  **pierden en cada arranque en frio** y no se comparten entre instancias
+  concurrentes. Se mitiga con `ReservedConcurrentExecutions: 1`, que no lo
+  resuelve: es una limitacion declarada del alcance, no un defecto oculto.
+  Si `list` te devuelve una lista vacia despues de un rato sin usar la API,
+  es exactamente esto.

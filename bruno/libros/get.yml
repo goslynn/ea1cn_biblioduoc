@@ -1,0 +1,121 @@
+info:
+  name: get
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{BASE_URL}}/api/libros/:id"
+  params:
+    - name: id
+      value: "L-001"
+      type: path
+      description: >-
+        Id del catalogo, de L-001 a L-020. Prueba `L-999` para ver el 404, y
+        `generos` para obtener la lista de generos (es una ruta literal que
+        Spring atiende antes que el parametro).
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        const esperado = Number(bru.getEnvVar("ESPERADO_LECTURA"));
+
+        test("responde lo que corresponde a esta credencial", function () {
+          expect(res.getStatus()).to.equal(esperado);
+        });
+
+        if (esperado === 200) {
+          test("devuelve el libro que se pidio", function () {
+            // Se lee el id de la URL enviada en vez de repetirlo aqui: asi el
+            // test sigue valiendo si cambias el parametro para explorar.
+            const pedido = decodeURIComponent(req.getUrl().split("/").pop().split("?")[0]);
+            expect(res.getBody().id).to.equal(pedido);
+          });
+        }
+
+docs: |
+  # Obtener un libro por id
+
+  `GET /api/libros/{id}`.
+
+  ## Parametros
+
+  | Nombre | Tipo | Obligatorio | Descripcion |
+  |---|---|---|---|
+  | `id` | path | si | Id del catalogo (`L-001` … `L-020`) |
+
+  ## Respuestas
+
+  | Codigo | Cuando | Como reproducirlo aqui |
+  |---|---|---|
+  | 200 | el id existe | valores por defecto |
+  | 404 | el id no existe | `id = L-999` |
+  | 401 | token invalido, caducado, o id token | entornos `aws-token-invalido` / `aws-id-token` |
+  | 403 | token valido sin el scope | entorno `aws-usuario-sin-scope` |
+
+  ## Por que el 404 de aqui es importante
+
+  **Lo genera Spring**, no la infraestructura. API Gateway no puede producirlo:
+  una ruta que no conoce la contesta con 403 *Missing Authentication Token*. De
+  modo que recibir un 404 con cuerpo JSON demuestra que la peticion atraveso el
+  authorizer, llego a la Lambda, arranco Spring y entro en el controlador. Es la
+  prueba mas barata de que la cadena entera funciona.
+
+  ## Detalle
+
+  `GET /api/libros/generos` devuelve la lista de generos. Para API Gateway
+  "generos" es un valor mas de `{id}`; es Spring quien decide que esa ruta
+  literal la atiende otro metodo.
+
+examples:
+  - name: 200 encontrado
+    request:
+      url: "{{BASE_URL}}/api/libros/L-001"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          {
+            "id": "L-001",
+            "titulo": "Clean Code",
+            "autor": "Robert C. Martin",
+            "genero": "Informatica",
+            "anio": 2008,
+            "isbn": "978-0132350884",
+            "ejemplares": 4,
+            "ubicacion": "Estante A-1",
+            "sinopsis": "Manual de estilo y artesania para escribir codigo que otras personas puedan leer.",
+            "disponible": true
+          }
+  - name: 404 id inexistente
+    description: Lo produce Spring (ResponseStatusException), no API Gateway.
+    request:
+      url: "{{BASE_URL}}/api/libros/L-999"
+      method: GET
+    response:
+      status: 404
+      statusText: Not Found
+      body:
+        type: json
+        data: |-
+          {
+            "status": 404,
+            "error": "Not Found",
+            "message": "No existe el libro L-999",
+            "path": "/api/libros/L-999"
+          }
+  - name: 200 lista de generos
+    request:
+      url: "{{BASE_URL}}/api/libros/generos"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: '["Cloud","Historia","Informatica","Lenguaje","Literatura","Matematicas","Metodologia","Seguridad"]'

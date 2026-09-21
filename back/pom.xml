@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.1</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>cl.duoc</groupId>
+  <artifactId>biblioteca-backend</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>biblioteca-backend</name>
+  <description>API interna de la Biblioteca Duoc: catalogo de libros y solicitudes de prestamo</description>
+
+  <properties>
+    <!-- 21 para que coincida con el runtime "java21" de la Lambda (aws/backend.yaml). -->
+    <java.version>21</java.version>
+  </properties>
+
+  <dependencies>
+    <!-- Spring MVC + Tomcat embebido. En Spring Boot 4 el starter se llama
+         "webmvc"; en Boot 3 era "web". Es lo unico que necesita el Lambda Web
+         Adapter: un servidor HTTP escuchando en un puerto. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
+    </dependency>
+
+    <!-- Bean Validation (@Valid, @NotBlank, @Min...). Es lo que convierte una
+         solicitud mal formada en un 400 con detalle, en vez de un 500. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
+    <!-- SEGUNDA VALIDACION DEL JWT (Defense in Depth).
+         API Gateway ya valida el token antes de invocar la Lambda. Estas dos
+         dependencias hacen que Spring lo vuelva a validar por su cuenta, de
+         modo que una llamada DIRECTA a la funcion (por su Function URL, sin
+         pasar por el gateway) tambien sea rechazada. Ver config/SecurityConfig. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webmvc-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Genera el "fat jar" ejecutable: el MISMO artefacto que corre con
+           "java -jar" en local y dentro de la Lambda, sin cambiar una linea. -->
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

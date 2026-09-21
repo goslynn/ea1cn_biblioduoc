@@ -1,0 +1,193 @@
+/* Estilos globales de la plataforma. Sin framework CSS: el objetivo es que se
+   vea ordenado y que el HTML siga siendo legible como evidencia. */
+:root {
+  --tinta: #12212e;
+  --tinta-suave: #5a6b7a;
+  --linea: #dde3ea;
+  --fondo: #f5f7fa;
+  --panel: #ffffff;
+  --duoc: #0a4b78;
+  --duoc-claro: #e8f1f8;
+  --exito: #1a7f52;
+  --exito-fondo: #e6f4ed;
+  --error: #b3261e;
+  --error-fondo: #fdecea;
+  --aviso: #8a6100;
+  --aviso-fondo: #fdf3d8;
+  --radio: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--tinta);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+h1, h2, h3 { line-height: 1.25; margin: 0 0 .4em; }
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1.02rem; }
+p { margin: 0 0 .8em; }
+a { color: var(--duoc); }
+
+button {
+  font: inherit;
+  padding: .5rem .95rem;
+  border: 1px solid var(--duoc);
+  border-radius: 8px;
+  background: var(--duoc);
+  color: #fff;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { filter: brightness(1.12); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.secundario { background: #fff; color: var(--duoc); }
+button.sutil { background: transparent; border-color: var(--linea); color: var(--tinta-suave); }
+
+input, select, textarea {
+  font: inherit;
+  width: 100%;
+  padding: .5rem .65rem;
+  border: 1px solid var(--linea);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+}
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--duoc);
+  outline-offset: 1px;
+}
+label { display: block; font-weight: 600; font-size: .85rem; margin-bottom: .3rem; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  padding: 1.1rem 1.25rem;
+}
+
+.aviso, .exito, .fallo {
+  border-radius: 8px;
+  padding: .7rem .9rem;
+  margin: .8rem 0;
+  font-size: .92rem;
+}
+.aviso { background: var(--aviso-fondo); color: var(--aviso); }
+.exito { background: var(--exito-fondo); color: var(--exito); }
+.fallo { background: var(--error-fondo); color: var(--error); }
+
+.etiqueta {
+  display: inline-block;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  padding: .15rem .5rem;
+  border-radius: 999px;
+  background: var(--duoc-claro);
+  color: var(--duoc);
+}
+.etiqueta.si { background: var(--exito-fondo); color: var(--exito); }
+.etiqueta.no { background: var(--error-fondo); color: var(--error); }
+
+.tenue { color: var(--tinta-suave); font-size: .88rem; }
+
+pre {
+  background: #0f1b26;
+  color: #d5e3ef;
+  padding: .85rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: .8rem;
+  margin: 0;
+}
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em; }
+
+/* ---- Catalogo ---- */
+.filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: .75rem;
+  align-items: end;
+  margin-top: .9rem;
+}
+.filtros .ancho { grid-column: span 2; }
+.filtros .casilla label { display: flex; align-items: center; gap: .45rem; font-weight: 400; }
+.filtros .casilla input { width: auto; }
+.filtros .acciones { display: flex; gap: .5rem; }
+
+.rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.libro { display: flex; flex-direction: column; gap: .35rem; }
+.libro header { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .2rem; }
+.libro .sinopsis { flex: 1; font-size: .9rem; color: var(--tinta-suave); }
+.libro button { margin-top: .4rem; }
+
+.barra {
+  position: sticky;
+  bottom: 1rem;
+  margin-top: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 6px 20px rgba(18, 33, 46, .12);
+}
+.barra a { text-decoration: none; }
+
+/* ---- Solicitudes ---- */
+.seleccionados { list-style: none; padding: 0; margin: .5rem 0 1rem; }
+.seleccionados li {
+  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+  padding: .45rem 0; border-bottom: 1px solid var(--linea);
+}
+.campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .9rem; }
+.campo-motivo { margin: .9rem 0; }
+.datos { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; margin: .8rem 0; }
+.datos dt { font-weight: 600; color: var(--tinta-suave); }
+.datos dd { margin: 0; }
+.acciones { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+.acciones a { text-decoration: none; }
+.solicitud { margin-top: 1rem; }
+.solicitud header { display: flex; align-items: center; gap: .6rem; }
+.solicitud header h3 { margin: 0; }
+
+/* ---- Marco de la aplicacion ---- */
+.cabecera {
+  display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  padding: .85rem 1.5rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--linea);
+}
+.marca { display: flex; align-items: center; gap: .6rem; margin-right: auto; }
+.marca .logo { font-size: 1.6rem; }
+.marca div { display: flex; flex-direction: column; line-height: 1.2; }
+
+.cabecera nav { display: flex; gap: .3rem; flex-wrap: wrap; }
+.cabecera nav a {
+  padding: .4rem .7rem; border-radius: 8px;
+  text-decoration: none; color: var(--tinta-suave); font-weight: 500;
+}
+.cabecera nav a:hover { background: var(--fondo); }
+.cabecera nav a.activo { background: var(--duoc-claro); color: var(--duoc); }
+.contador {
+  display: inline-block; margin-left: .3rem; padding: 0 .4rem;
+  border-radius: 999px; background: var(--duoc); color: #fff; font-size: .75rem;
+}
+
+.usuario { display: flex; align-items: center; gap: .6rem; }
+
+main { max-width: 1080px; margin: 0 auto; padding: 1.5rem; display: grid; gap: 1rem; }
+footer { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem 2rem; font-size: .8rem; }
+
+.portada { max-width: 560px; }
+.portada button { margin: .6rem 0; }
+
+textarea[readonly] { font-family: ui-monospace, Menlo, monospace; font-size: .74rem; }

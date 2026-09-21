@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# ==============================================================================
+#  biblioteca / artifacts.yaml   --   Bucket privado para los artefactos de build
+# ==============================================================================
+#
+#  QUE HACE
+#    * ArtifactsBucket -> bucket S3 PRIVADO y versionado donde el pipeline deja
+#                         el ZIP de la Lambda (app.jar + run.sh) antes de
+#                         publicar una version nueva del backend.
+#
+#  EL FLUJO QUE HABILITA
+#    1. aws/pipeline/build-backend.sh compila el JAR y arma el ZIP.
+#    2. Lo sube aqui con "s3api put-object", que devuelve un VersionId.
+#    3. aws/backend.yaml apunta la Lambda a (bucket, key, VersionId).
+#    4. Al crear o actualizar la funcion, Lambda LEE el ZIP de este bucket
+#       usando su execution role (LabRole). En ningun momento del proceso
+#       existe una Access Key estatica: solo credenciales temporales.
+#
+#  TRAMPAS
+#    * Un bucket versionado guarda TODAS las versiones anteriores. Cada JAR de
+#      Spring Boot pesa ~21 MB, asi que sin la regla de ciclo de vida el bucket
+#      crece sin freno. La regla borra las versiones no vigentes a los 7 dias.
+#    * CloudFormation NO puede borrar un bucket con objetos dentro. Por eso
+#      aws/scripts/teardown.sh lo vacia (versiones y delete markers) primero.
+#
+#  DEPENDE DE
+#    Nada. Es el primer stack que se despliega.
+#
+#  ENTREGA (Outputs)
+#    ArtifactsBucketName -> aws/pipeline/build-backend.sh y aws/backend.yaml
+#
+#  DESPLIEGUE MANUAL (bootstrap.sh ya lo hace por ti)
+#    aws cloudformation deploy \
+#      --template-file aws/artifacts.yaml \
+#      --stack-name biblioteca-artifacts \
+#      --parameter-overrides ProjectName=biblioteca
+# ==============================================================================
+
+Description: >-
+  biblioteca - Bucket S3 privado y versionado para los artefactos de despliegue
+  del backend. Sin dependencias.
+
+Parameters:
+
+  # Prefijo de todos los nombres del proyecto. bootstrap.sh lo pasa siempre.
+  ProjectName:
+    Type: String
+    Default: biblioteca
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: Solo minusculas, numeros y guiones (va en el nombre del bucket).
+    Description: Prefijo de nombres. Debe coincidir con el de los demas stacks.
+
+  # Cuantos dias se conservan las versiones viejas del artefacto.
+  RetencionVersionesDias:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 90
+    Description: >-
+      Dias que sobrevive una version NO vigente del ZIP antes de borrarse.
+      7 basta para poder volver atras un despliegue fallido sin acumular GB.
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  #  El bucket de artefactos.
+  #  El nombre lleva el AccountId porque los nombres de bucket son unicos en
+  #  TODO S3, no solo en la cuenta: sin el, chocarias con otro alumno. Ademas
+  #  lo hace predecible, de modo que un script puede calcularlo sin leer el
+  #  stack.
+  # ---------------------------------------------------------------------------
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-artifacts-${AWS::AccountId}"
+
+      # Cada subida crea una version nueva. Eso da dos cosas: poder volver a un
+      # JAR anterior, y —sobre todo— un VersionId que le demuestra a
+      # CloudFormation que el codigo CAMBIO. Sin versionado, el template se ve
+      # identico entre despliegues y la Lambda se queda con el codigo viejo.
+      VersioningConfiguration:
+        Status: Enabled
+
+      # Los artefactos NUNCA son publicos. Los cuatro flags cierran la puerta
+      # tanto a ACLs como a politicas de bucket, presentes y futuras.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      # Cifrado en reposo con la clave gestionada por S3. Es gratis y evita la
+      # observacion tipica de una auditoria.
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+      LifecycleConfiguration:
+        Rules:
+          # Limpia versiones viejas del ZIP.
+          - Id: BorrarVersionesAntiguas
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: !Ref RetencionVersionesDias
+          # Limpia subidas multiparte que quedaron a medias (una subida cortada
+          # sigue ocupando y cobrando aunque no se vea en "s3 ls").
+          - Id: AbortarSubidasIncompletas
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+
+  # Lo consumen el pipeline (destino de la subida) y backend.yaml (origen del codigo).
+  ArtifactsBucketName:
+    Description: Nombre del bucket de artefactos.
+    Value: !Ref ArtifactsBucket
+
+  ArtifactsBucketArn:
+    Description: ARN del bucket, por si hace falta en una politica.
+    Value: !GetAtt ArtifactsBucket.Arn

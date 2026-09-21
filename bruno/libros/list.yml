@@ -1,0 +1,148 @@
+info:
+  name: list
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{BASE_URL}}/api/libros"
+  params:
+    - name: q
+      value: ""
+      type: query
+      disabled: true
+      description: >-
+        Busca en titulo, autor e ISBN. No distingue mayusculas ni tildes:
+        "garcia" encuentra "Gabriel Garcia Marquez". Prueba con `oauth`.
+    - name: genero
+      value: ""
+      type: query
+      disabled: true
+      description: >-
+        Coincidencia exacta de genero, sin distinguir mayusculas. Valores del
+        catalogo: Cloud, Historia, Informatica, Lenguaje, Literatura,
+        Matematicas, Metodologia, Seguridad.
+    - name: soloDisponibles
+      value: "true"
+      type: query
+      disabled: true
+      description: Descarta los titulos con 0 ejemplares (L-005 y L-011).
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        // El entorno declara que codigo debe producir SU credencial. Asi la
+        // misma peticion sirve para el 200, el 403 y el 401 sin duplicarla.
+        const esperado = Number(bru.getEnvVar("ESPERADO_LECTURA"));
+
+        test("responde lo que corresponde a esta credencial", function () {
+          expect(res.getStatus()).to.equal(esperado);
+        });
+
+        if (esperado === 200) {
+          test("devuelve una lista de libros con los campos del modelo", function () {
+            const cuerpo = res.getBody();
+            expect(cuerpo).to.be.an("array");
+            expect(cuerpo.length).to.be.above(0);
+            expect(cuerpo[0]).to.have.property("id");
+            expect(cuerpo[0]).to.have.property("titulo");
+            expect(cuerpo[0]).to.have.property("disponible");
+          });
+
+          test("respeta los filtros que se hayan enviado", function () {
+            const url = req.getUrl();
+            const cuerpo = res.getBody();
+            if (url.includes("soloDisponibles=true")) {
+              expect(cuerpo.every((libro) => libro.disponible)).to.equal(true);
+            }
+          });
+        }
+
+docs: |
+  # Listar y buscar en el catalogo
+
+  `GET /api/libros`. Sin parametros devuelve los 20 titulos ordenados por
+  titulo; con ellos, el resultado de la busqueda. El filtrado lo hace el
+  backend en memoria.
+
+  ## Parametros
+
+  | Nombre | Tipo | Obligatorio | Descripcion |
+  |---|---|---|---|
+  | `q` | query | no | Texto en titulo, autor o ISBN. Ignora mayusculas y tildes |
+  | `genero` | query | no | Genero exacto |
+  | `soloDisponibles` | query | no | `true` descarta los titulos sin ejemplares |
+
+  Los tres estan **desactivados** por defecto: activalos en la pestana *Params*.
+
+  ## Respuestas
+
+  | Codigo | Cuando | Como reproducirlo aqui |
+  |---|---|---|
+  | 200 | credencial con el scope `biblioteca-api/acceso` | entorno `aws` |
+  | 401 | token invalido, mal firmado o caducado | entorno `aws-token-invalido` |
+  | 401 | se manda un **id token**: no lleva claim `scope` | entorno `aws-id-token` |
+  | 401 | sin cabecera `Authorization` | pestana *Auth* → *No Auth* |
+  | 403 | token valido **sin** el scope exigido | entorno `aws-usuario-sin-scope` |
+  | 500 | falta `AWS::Lambda::Permission` en `aws/api.yaml` | (no deberia pasar) |
+
+  Una lista vacia **no** es un error: si la busqueda no encuentra nada, el
+  codigo sigue siendo 200 con `[]`.
+
+  ## Detalle
+
+  El 401 y el 403 los produce **API Gateway**, antes de invocar la Lambda: no
+  llegan al codigo Java ni aparecen en los logs de la funcion. Si buscas el
+  error en CloudWatch y no lo encuentras, es por eso.
+
+examples:
+  - name: 200 catalogo completo
+    request:
+      url: "{{BASE_URL}}/api/libros"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: content-type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": "L-012",
+              "titulo": "Angular Development with TypeScript",
+              "autor": "Yakov Fain y Anton Moiseev",
+              "genero": "Informatica",
+              "anio": 2018,
+              "isbn": "978-1617295348",
+              "ejemplares": 3,
+              "ubicacion": "Estante A-4",
+              "sinopsis": "Componentes, servicios, enrutamiento e interceptores explicados de punta a cabo.",
+              "disponible": true
+            }
+          ]
+  - name: 401 id token
+    description: >-
+      El token esta perfectamente firmado y vigente, pero es un ID token: no
+      lleva el claim "scope" que el metodo exige. Lo rechaza API Gateway.
+    response:
+      status: 401
+      statusText: Unauthorized
+      body:
+        type: json
+        data: '{ "message": "Unauthorized" }'
+  - name: 403 token sin el scope
+    description: >-
+      Access token de un usuario obtenido con admin-initiate-auth. Ese flujo no
+      emite custom scopes, asi que el token es valido pero no autoriza esta API.
+      Autenticacion correcta, autorizacion insuficiente.
+    response:
+      status: 403
+      statusText: Forbidden
+      body:
+        type: json
+        data: '{ "Message": "User is not authorized to access this resource with an explicit deny" }'

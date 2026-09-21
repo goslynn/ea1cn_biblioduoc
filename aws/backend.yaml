@@ -1,0 +1,320 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# ==============================================================================
+#  biblioteca / backend.yaml   --   El Spring Boot corriendo dentro de Lambda
+# ==============================================================================
+#
+#  QUE HACE
+#    * LambdaLogGroup  -> los logs, declarados a mano y con caducidad.
+#    * BackendFunction -> la funcion que ejecuta el fat jar de Spring Boot TAL
+#                         CUAL, sin tocar el codigo Java ni el pom.xml.
+#    * BypassUrl       -> (condicional) una Function URL SIN autenticacion, que
+#                         solo se enciende para demostrar Defense in Depth.
+#
+#  >>> COMO CORRE SPRING BOOT EN LAMBDA SIN CAMBIAR NADA <<<
+#    Con el AWS Lambda Web Adapter, un layer publico que mantiene AWS:
+#
+#      AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap
+#            +-- el layer se pone DELANTE del arranque normal de Lambda y toma
+#                el control del Runtime API.
+#      Handler: run.sh          (un script, no una clase Java)
+#            +-- run.sh hace:  exec java -jar /var/task/app.jar
+#                => arranca el Tomcat embebido en el puerto 8080.
+#
+#      Cuando llega una invocacion, el adapter la traduce a un request HTTP
+#      contra localhost:8080 y devuelve la respuesta HTTP como respuesta de
+#      Lambda. Para los controladores es indistinguible de correr en local.
+#
+#    Ventaja concreta: el MISMO artefacto vale para "java -jar" en tu maquina,
+#    para esta Lambda y para una EC2 el dia de manana.
+#
+#  >>> LA SEGUNDA VALIDACION DEL TOKEN SE CONFIGURA AQUI <<<
+#    Las variables SPRING_SECURITY_...ISSUER_URI y BIBLIOTECA_SCOPE son las que
+#    hacen que Spring Security valide el JWT por su cuenta, ademas de la
+#    validacion que ya hizo API Gateway. Por eso NO hay ningun identificador de
+#    Cognito escrito en el repositorio: entran como parametros del stack.
+#
+#  TRAMPAS
+#    * El LogGroup se declara explicitamente y la funcion lleva DependsOn. Si
+#      se deja que Lambda lo cree sola, queda sin caducidad, fuera del stack, y
+#      el siguiente despliegue choca con "log group already exists".
+#    * El readiness check apunta a /health porque, con Spring Security activo,
+#      cualquier ruta de /api le responderia 401 al adapter y el arranque se
+#      daria por fallido.
+#    * S3ObjectVersion no admite cadena vacia: o hay VersionId valido o se
+#      omite la propiedad entera (AWS::NoValue).
+#    * La version del layer (":28") se fija a proposito. "la ultima" cambia con
+#      el tiempo y rompe despliegues que antes funcionaban.
+#
+#  DEPENDE DE
+#    * artifacts.yaml -> ArtifactsBucketName, y el ZIP ya SUBIDO
+#    * cognito.yaml   -> IssuerUrl, ScopeCompleto
+#    * web.yaml       -> SiteOrigin (cabecera CORS de las respuestas reales)
+#
+#  ENTREGA (Outputs)
+#    FunctionArn, FunctionName -> api.yaml
+#    BypassUrl (condicional)   -> la demo de Defense in Depth
+#    LogGroupName              -> aws logs tail
+#
+#  DESPLIEGUE
+#    ./aws/pipeline/build-backend.sh     (compila, sube el ZIP y despliega)
+# ==============================================================================
+
+Description: >-
+  biblioteca - Funcion Lambda (java21) que ejecuta el jar de Spring Boot sin
+  modificarlo, mediante el AWS Lambda Web Adapter. Depende de artifacts.yaml y
+  de cognito.yaml.
+
+Parameters:
+
+  ProjectName:
+    Type: String
+    Default: biblioteca
+    AllowedPattern: "^[a-z0-9-]+$"
+    Description: Prefijo de nombres. Debe coincidir con el de los demas stacks.
+
+  LabRoleArn:
+    Type: String
+    AllowedPattern: "^arn:aws:iam::[0-9]{12}:role/.+$"
+    ConstraintDescription: Debe ser el ARN de un rol IAM existente.
+    Description: >-
+      Rol de ejecucion de la Lambda. En AWS Academy NO se pueden crear roles
+      IAM, asi que se reutiliza el rol preexistente LabRole. Se obtiene con:
+        echo "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/LabRole"
+
+  ArtifactsBucketName:
+    Type: String
+    Description: Output "ArtifactsBucketName" de artifacts.yaml.
+
+  ArtifactsObjectKey:
+    Type: String
+    Default: backend/biblioteca-lambda.zip
+    Description: Ruta del ZIP dentro del bucket de artefactos.
+
+  ArtifactsObjectVersion:
+    Type: String
+    Default: ""
+    Description: >-
+      VersionId del objeto en S3. El pipeline lo rellena en cada despliegue:
+      es lo que le demuestra a CloudFormation que el codigo cambio de verdad.
+      Vacio significa "usar la version vigente".
+
+  IssuerUrl:
+    Type: String
+    AllowedPattern: "^https://cognito-idp\\..+$"
+    Description: >-
+      Output "IssuerUrl" de cognito.yaml. Spring Security descarga de ahi las
+      claves publicas (JWKS) y valida firma, expiracion y emisor de cada token.
+
+  RequiredScope:
+    Type: String
+    Default: biblioteca-api/acceso
+    Description: >-
+      Output "ScopeCompleto" de cognito.yaml. Spring exige este scope en el
+      claim "scope" del token. Debe ser IDENTICO al AuthorizationScopes de
+      api.yaml: si difieren, API Gateway deja pasar y Spring responde 403.
+
+  WebOrigin:
+    Type: String
+    Description: >-
+      Origen del frontend (Output "SiteOrigin" de web.yaml). Spring lo usa para
+      poner la cabecera Access-Control-Allow-Origin en las respuestas REALES:
+      con integracion AWS_PROXY, API Gateway devuelve lo que diga la Lambda y
+      no puede anadir cabeceras por su cuenta. Ver el reparto del CORS en
+      api.yaml.
+
+  LambdaMemoryMb:
+    Type: Number
+    Default: 1536
+    MinValue: 512
+    MaxValue: 3008
+    Description: >-
+      En Lambda la CPU es proporcional a la memoria. La JVM arranca lenta con
+      poca CPU, asi que MAS memoria BAJA el arranque en frio (y suele salir mas
+      barato, porque se paga por milisegundo).
+
+  ReservedConcurrency:
+    Type: Number
+    Default: 1
+    MinValue: -1
+    Description: >-
+      Instancias simultaneas como maximo. Se fija en 1 A PROPOSITO: las
+      solicitudes se guardan EN MEMORIA, asi que con dos instancias en paralelo
+      cada una veria una lista distinta. No es una solucion —el estado se sigue
+      perdiendo en cada arranque en frio— sino una mitigacion honesta mientras
+      no haya persistencia. Poner -1 desactiva la reserva (util si la cuenta
+      del laboratorio no permite reservar concurrencia).
+
+  EnableBypassDemoUrl:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Expone la Lambda con una Function URL SIN autenticacion para demostrar el
+      bypass del authorizer (Defense in Depth). ENCIENDELA para la demo y
+      APAGALA en cuanto termines: mientras este en "true" hay una puerta a la
+      aplicacion que no pasa por API Gateway.
+
+Conditions:
+
+  # S3ObjectVersion no acepta cadena vacia: hay que quitar la propiedad entera.
+  TieneVersion: !Not [!Equals [!Ref ArtifactsObjectVersion, ""]]
+
+  # -1 es la forma de decir "sin reserva de concurrencia".
+  ReservaConcurrencia: !Not [!Equals [!Ref ReservedConcurrency, -1]]
+
+  ConBypass: !Equals [!Ref EnableBypassDemoUrl, "true"]
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  #  Los logs. Declarados aqui para que (a) caduquen, (b) se borren junto con
+  #  el stack y (c) no los cree Lambda por su cuenta en la primera invocacion.
+  # ---------------------------------------------------------------------------
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProjectName}-api"
+      RetentionInDays: 7
+
+  # ---------------------------------------------------------------------------
+  #  La funcion: el backend completo.
+  # ---------------------------------------------------------------------------
+  BackendFunction:
+    Type: AWS::Lambda::Function
+    # El log group tiene que existir ANTES que la funcion.
+    DependsOn: LambdaLogGroup
+    Properties:
+      FunctionName: !Sub "${ProjectName}-api"
+      Description: API de la Biblioteca Duoc (Spring Boot sobre Lambda Web Adapter).
+
+      Runtime: java21              # coincide con <java.version>21</java.version> del pom
+      Architectures:
+        - x86_64                   # debe coincidir con el layer X86 de mas abajo
+
+      # NO es una clase Java: es el nombre del script dentro del ZIP. Solo
+      # tiene sentido porque el Web Adapter intercepta el arranque.
+      Handler: run.sh
+
+      # AWS Academy: el rol se recibe, no se crea.
+      Role: !Ref LabRoleArn
+
+      MemorySize: !Ref LambdaMemoryMb
+
+      # 30 s cubre el arranque en frio de Spring (~5-10 s). API Gateway corta a
+      # los 30 s de todas formas, asi que subirlo mas no cambiaria nada.
+      Timeout: 30
+
+      ReservedConcurrentExecutions: !If
+        - ReservaConcurrencia
+        - !Ref ReservedConcurrency
+        - !Ref "AWS::NoValue"
+
+      Code:
+        S3Bucket: !Ref ArtifactsBucketName
+        S3Key: !Ref ArtifactsObjectKey
+        S3ObjectVersion: !If [TieneVersion, !Ref ArtifactsObjectVersion, !Ref "AWS::NoValue"]
+
+      # -----------------------------------------------------------------------
+      #  EL LAYER. La cuenta 753240598075 es de AWS y publica el Web Adapter.
+      #  Version fijada a proposito; la vigente se consulta en
+      #  https://github.com/awslabs/aws-lambda-web-adapter
+      # -----------------------------------------------------------------------
+      Layers:
+        - !Sub "arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerX86:28"
+
+      Environment:
+        Variables:
+          # Activa el adapter. Sin esta variable el layer no hace nada y Lambda
+          # intentaria cargar "run.sh" como si fuera una clase Java.
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+
+          # Puerto donde el adapter busca la aplicacion. Es el mismo
+          # server.port de application.properties, asi que no hay nada que
+          # cambiar al pasar de local a Lambda.
+          PORT: "8080"
+
+          # El adapter espera un 2xx en esta ruta antes de dar por arrancada la
+          # app. Tiene que ser una ruta PUBLICA: con Spring Security activo,
+          # /api/libros le responderia 401 y el arranque se daria por fallido.
+          AWS_LWA_READINESS_CHECK_PATH: /health
+
+          # Deja que Spring termine de levantarse durante la primera invocacion
+          # en lugar de dentro de la fase de init, que tiene un limite de 10 s.
+          AWS_LWA_ASYNC_INIT: "true"
+
+          # Arranque en frio mas corto: se le pide a la JVM que no pierda
+          # tiempo optimizando a fondo (C2). Para un proceso de vida corta,
+          # compilar rapido y regular gana a compilar lento y bien.
+          JAVA_TOOL_OPTIONS: "-XX:+TieredCompilation -XX:TieredStopAtLevel=1"
+
+          # --- Segunda validacion del JWT (Spring Security) ------------------
+          # Spring Boot mapea esta variable a la propiedad
+          # spring.security.oauth2.resourceserver.jwt.issuer-uri
+          SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: !Ref IssuerUrl
+          # ...y esta a la propiedad "biblioteca.scope" que lee SecurityConfig.
+          BIBLIOTECA_SCOPE: !Ref RequiredScope
+
+          # Origen permitido por el CORS de Spring (propiedad "biblioteca.origen").
+          BIBLIOTECA_ORIGEN: !Ref WebOrigin
+
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ---------------------------------------------------------------------------
+  #  LA PUERTA TRASERA DE LA DEMO (condicional).
+  #
+  #  El canon demuestra Defense in Depth atacando la IP publica de la EC2 y
+  #  saltandose el authorizer. En serverless no hay IP que atacar, asi que la
+  #  puerta se fabrica a proposito, se usa y se apaga:
+  #
+  #    1. EnableBypassDemoUrl=true, ANTES de SecurityConfig:
+  #         curl <BypassUrl>/api/libros            -> 200   (puerta abierta)
+  #    2. Se aplica SecurityConfig y se redespliega:
+  #         curl <BypassUrl>/api/libros            -> 401   (lo rechaza SPRING)
+  #    3. La misma peticion por API Gateway con token valido -> 200
+  #    4. EnableBypassDemoUrl=false y redesplegar  -> la puerta desaparece
+  #
+  #  Ojo con la leccion completa: proteger con Spring Security NO equivale a
+  #  cerrar la red. Cerrarla de verdad es, precisamente, el paso 4.
+  # ---------------------------------------------------------------------------
+  BypassUrl:
+    Type: AWS::Lambda::Url
+    Condition: ConBypass
+    Properties:
+      TargetFunctionArn: !GetAtt BackendFunction.Arn
+      AuthType: NONE          # sin IAM: cualquiera con la URL puede invocarla
+
+  # Una Function URL con AuthType NONE ademas necesita permiso explicito para
+  # el publico general; sin esto la URL existe pero responde 403.
+  BypassUrlPermission:
+    Type: AWS::Lambda::Permission
+    Condition: ConBypass
+    Properties:
+      FunctionName: !Ref BackendFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+Outputs:
+
+  FunctionName:
+    Description: Nombre de la funcion. Lo usan api.yaml (permiso) y el pipeline.
+    Value: !Ref BackendFunction
+
+  FunctionArn:
+    Description: ARN de la funcion. Es el destino de la integracion AWS_PROXY de api.yaml.
+    Value: !GetAtt BackendFunction.Arn
+
+  LogGroupName:
+    Description: "Seguir los logs: aws logs tail <este valor> --follow"
+    Value: !Ref LambdaLogGroup
+
+  BypassUrl:
+    Condition: ConBypass
+    Description: >-
+      PUERTA TRASERA ACTIVA: esta URL llega a la aplicacion SIN pasar por API
+      Gateway ni por su authorizer. Es solo para la demostracion de Defense in
+      Depth. Vuelve a desplegar con EnableBypassDemoUrl=false al terminar.
+    Value: !GetAtt BypassUrl.FunctionUrl

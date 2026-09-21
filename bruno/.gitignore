@@ -1,0 +1,6 @@
+# Los entornos los genera aws/pipeline/bruno-env.sh y LLEVAN TOKENS REALES.
+# Se regeneran en segundos, asi que no hay ninguna razon para versionarlos.
+environments/aws*.yml
+
+.env*
+node_modules

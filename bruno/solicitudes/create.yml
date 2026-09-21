@@ -1,0 +1,199 @@
+info:
+  name: create
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/solicitudes"
+  headers:
+    - name: Content-Type
+      value: application/json
+  auth: inherit
+  body:
+    # Variantes del MISMO endpoint: cambiar el cuerpo no justifica otra
+    # peticion. Se selecciona en la pestana Body.
+    - title: valida
+      selected: true
+      body:
+        type: json
+        data: |-
+          {
+            "items": [
+              { "libroId": "L-001", "cantidad": 1 },
+              { "libroId": "L-013", "cantidad": 2 }
+            ],
+            "dias": 14,
+            "motivo": "Material de apoyo para el proyecto de titulo",
+            "sede": "SAN_JOAQUIN"
+          }
+    - title: invalida (400 - motivo corto y demasiados dias)
+      selected: false
+      body:
+        type: json
+        data: |-
+          {
+            "items": [ { "libroId": "L-001", "cantidad": 1 } ],
+            "dias": 90,
+            "motivo": "corto",
+            "sede": "SAN_JOAQUIN"
+          }
+    - title: libro inexistente (404)
+      selected: false
+      body:
+        type: json
+        data: |-
+          {
+            "items": [ { "libroId": "L-999", "cantidad": 1 } ],
+            "dias": 7,
+            "motivo": "Este libro no existe en el catalogo",
+            "sede": "CONCEPCION"
+          }
+    - title: sin ejemplares (409)
+      selected: false
+      body:
+        type: json
+        data: |-
+          {
+            "items": [ { "libroId": "L-005", "cantidad": 1 } ],
+            "dias": 7,
+            "motivo": "Building Microservices tiene cero ejemplares",
+            "sede": "PLAZA_OESTE"
+          }
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        const esperado = Number(bru.getEnvVar("ESPERADO_CREACION"));
+
+        test("responde lo que corresponde a esta credencial", function () {
+          expect(res.getStatus()).to.equal(esperado);
+        });
+
+        if (esperado === 201) {
+          test("el servidor completa lo que el cliente no manda", function () {
+            const cuerpo = res.getBody();
+            const enviado = req.getBody();
+
+            expect(cuerpo.id).to.match(/^SOL-\d{4}$/);
+            expect(cuerpo.estado).to.equal("RECIBIDA");
+            // El solicitante NO viaja en el cuerpo: sale del JWT.
+            expect(cuerpo.solicitante).to.be.a("string").and.not.equal("");
+            expect(enviado).to.not.have.property("solicitante");
+          });
+
+          test("resuelve los titulos contra el catalogo", function () {
+            const enviado = req.getBody();
+            const cuerpo = res.getBody();
+            expect(cuerpo.lineas.length).to.equal(enviado.items.length);
+            expect(cuerpo.lineas[0].titulo).to.be.a("string").and.not.equal("");
+          });
+
+          test("calcula la fecha de devolucion", function () {
+            expect(res.getBody().fechaDevolucion).to.match(/^\d{4}-\d{2}-\d{2}$/);
+          });
+        }
+
+        // El id creado queda disponible para la peticion "get" de esta misma
+        // carpeta. Si no se pudo crear, se deja un id de relleno: en los
+        // entornos de 401/403 el gateway rechaza antes de mirar la ruta.
+        bru.setVar(
+          "solicitudCreada",
+          res.getStatus() === 201 ? res.getBody().id : "SOL-0001"
+        );
+
+docs: |
+  # Crear una solicitud de prestamo
+
+  `POST /api/solicitudes`. Es el **unico endpoint que escribe**, y por eso el
+  que mejor demuestra la cadena completa: el token pasa el authorizer de API
+  Gateway, lo vuelve a validar Spring Security y ademas lo **lee** el
+  controlador para saber quien solicita.
+
+  ## Cuerpo
+
+  Cuatro variantes preparadas en la pestana *Body*; la primera es la valida.
+
+  ## Respuestas
+
+  | Codigo | Cuando | Como reproducirlo aqui |
+  |---|---|---|
+  | 201 | la solicitud se creo | variante *valida*, entorno `aws` |
+  | 400 | falla la validacion del formulario | variante *invalida* |
+  | 400 | `sede` no es una de las cinco | cambia `sede` a `LA_LUNA` |
+  | 404 | un `libroId` no existe | variante *libro inexistente* |
+  | 409 | el libro existe pero no tiene ejemplares | variante *sin ejemplares* |
+  | 401 | token invalido, caducado o id token | entornos `aws-token-invalido` / `aws-id-token` |
+  | 403 | token valido sin el scope | entorno `aws-usuario-sin-scope` |
+
+  El 400 llega con el detalle campo a campo, que es lo que lo hace util:
+
+  ```json
+  { "detalles": { "dias": "el prestamo maximo es de 30 dias" } }
+  ```
+
+  ## Detalle
+
+  Este POST dispara un **preflight** `OPTIONS` en el navegador (por la cabecera
+  `Authorization` y por `Content-Type: application/json`). Bruno no lo hace:
+  la politica de CORS es cosa del navegador. Por eso una API puede funcionar
+  perfectamente aqui y fallar en Chrome, y por eso `aws/api.yaml` declara un
+  metodo OPTIONS con integracion MOCK en cada recurso.
+
+examples:
+  - name: 201 creada
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: location
+          value: /api/solicitudes/SOL-0001
+      body:
+        type: json
+        data: |-
+          {
+            "id": "SOL-0001",
+            "solicitante": "3n1k4kq9v8m2f7c0abcd1234",
+            "estado": "RECIBIDA",
+            "lineas": [
+              { "libroId": "L-001", "titulo": "Clean Code", "autor": "Robert C. Martin", "cantidad": 1 },
+              { "libroId": "L-013", "titulo": "Estructuras de Datos y Algoritmos en Java", "autor": "Michael T. Goodrich", "cantidad": 2 }
+            ],
+            "dias": 14,
+            "motivo": "Material de apoyo para el proyecto de titulo",
+            "sede": "SAN_JOAQUIN",
+            "creadaEn": "2026-09-21T23:24:22.847991513Z",
+            "fechaDevolucion": "2026-10-05"
+          }
+  - name: 400 formulario invalido
+    description: Lo genera Bean Validation en Spring, campo por campo.
+    response:
+      status: 400
+      statusText: Bad Request
+      body:
+        type: json
+        data: |-
+          {
+            "instante": "2026-09-21T23:24:22.911800139Z",
+            "status": 400,
+            "error": "Bad Request",
+            "mensaje": "La solicitud no es valida",
+            "detalles": {
+              "dias": "el prestamo maximo es de 30 dias",
+              "motivo": "el motivo debe tener entre 10 y 300 caracteres"
+            }
+          }
+  - name: 409 sin ejemplares
+    description: El libro existe en el catalogo, pero tiene ejemplares 0.
+    response:
+      status: 409
+      statusText: Conflict
+      body:
+        type: json
+        data: |-
+          {
+            "status": 409,
+            "error": "Conflict",
+            "message": "Sin ejemplares disponibles de Building Microservices (L-005)"
+          }

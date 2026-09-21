@@ -1,0 +1,39 @@
+<section class="panel">
+  <h1>Mis solicitudes</h1>
+  <p class="tenue">
+    El backend devuelve solo las del portador del token: el frontend no manda
+    ningun identificador de usuario.
+  </p>
+  <button type="button" class="secundario" (click)="cargar()">Recargar</button>
+</section>
+
+@if (error()) { <p class="fallo">{{ error() }}</p> }
+@if (cargando()) { <p class="tenue">Cargando…</p> }
+
+@if (!cargando() && lista().length === 0 && !error()) {
+  <p class="aviso">
+    No hay solicitudes a tu nombre. Puede que aun no hayas enviado ninguna, o
+    que la Lambda se haya reciclado: el estado vive en memoria y se pierde en
+    cada arranque en frio.
+    <a routerLink="/catalogo">Ir al catalogo</a>.
+  </p>
+}
+
+@for (solicitud of lista(); track solicitud.id) {
+  <article class="panel solicitud">
+    <header>
+      <h3>{{ solicitud.id }}</h3>
+      <span class="etiqueta">{{ solicitud.estado }}</span>
+    </header>
+    <p class="tenue">
+      {{ solicitud.dias }} dias · retiro en {{ solicitud.sede }} ·
+      devolver antes del {{ solicitud.fechaDevolucion }}
+    </p>
+    <p>{{ solicitud.motivo }}</p>
+    <ul>
+      @for (linea of solicitud.lineas; track linea.libroId) {
+        <li>{{ linea.cantidad }} x {{ linea.titulo }} <span class="tenue">({{ linea.autor }})</span></li>
+      }
+    </ul>
+  </article>
+}

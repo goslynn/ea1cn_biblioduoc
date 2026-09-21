@@ -1,1 +1,22 @@
-context/
+# ---- Backend (Maven) ----
+back/target/
+back/.mvn/wrapper/maven-wrapper.jar
+
+# ---- Frontend (Angular) ----
+front/node_modules/
+front/.angular/
+front/dist/
+
+# Configuracion del frontend GENERADA por aws/pipeline/publish-web.sh a partir
+# de los Outputs de CloudFormation. No se versiona: cambia con cada cuenta AWS.
+front/src/app/aws-config.ts
+
+# ---- Bruno ----
+# Los entornos los genera aws/pipeline/bruno-env.sh y LLEVAN TOKENS REALES.
+bruno/environments/aws*.yml
+bruno/.env
+
+# ---- Local / temporal ----
+aws/.local/
+*.log
+.DS_Store
