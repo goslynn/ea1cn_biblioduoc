@@ -110,21 +110,38 @@ verificacion se hace con Bruno y con el navegador.
 
 ## 4. La seguridad, en dos capas
 
-| Prueba | `Authorization` | Resultado | Quien rechaza |
-|---|---|---|---|
-| sin cabecera | *(ausente)* | 401 | API Gateway · authorizer |
-| token inventado | `Bearer abc` | 401 | API Gateway · firma |
-| **id token** | `Bearer <id_token>` | 401 | API Gateway · falta el claim `scope` |
-| access token **sin** el scope | `Bearer <access_token>` | 403 | API Gateway · `AuthorizationScopes` |
-| access token **con** el scope | `Bearer <access_token>` | 200 | nadie: pasa las dos capas |
-| id inexistente, token valido | `Bearer <access_token>` | 404 | **Spring** |
-| directo a la Lambda, sin JWT | *(ausente)* | 401 | **Spring Security** |
-| directo a la Lambda, con JWT | `Bearer <access_token>` | 200 | nadie |
+Todos los codigos de esta tabla estan **medidos** contra el despliegue real, no
+supuestos. Las dos columnas son las dos capas.
 
-Las dos ultimas filas son **Defense in Depth**: si alguien descubre la funcion
-Lambda y la llama sin pasar por API Gateway, Spring Security vuelve a validar
-el mismo token. La demostracion completa, con sus cuatro comandos y su salida,
-esta en [`ANEXO-EA1.md`](ANEXO-EA1.md).
+| Credencial | Por API Gateway | Directo a la Lambda | Quien rechaza |
+|---|---|---|---|
+| sin cabecera `Authorization` | **401** | **401** | authorizer / Spring Security |
+| token inventado (`Bearer abc`) | **401** | **401** | firma invalida, en las dos capas |
+| **id token** | **401** | **401** | falta el claim `scope` / `token_use != access` |
+| access token **sin** el scope | **401** | **403** | ver el recuadro de abajo |
+| access token **con** el scope | **200** | **200** | nadie: pasa las dos capas |
+| id inexistente, token valido | **404** | **404** | **Spring** |
+| formulario invalido | **400** | — | **Spring**, Bean Validation |
+| libro sin ejemplares | **409** | — | **Spring**, regla de negocio |
+| ruta que no existe | **403** | — | API Gateway, *Missing Authentication Token* |
+
+> ### El hallazgo: el 403 no lo da API Gateway, lo da Spring
+>
+> La guia hedge en su §12 — *"403 **o rechazo de autorizacion segun
+> configuracion**"*— y pide medirlo. Medido: cuando el token es valido pero sus
+> scopes no incluyen el exigido, el authorizer `COGNITO_USER_POOLS` responde
+> **401 `{"message":"Unauthorized"}`**, exactamente igual que ante un token
+> inventado. Desde fuera, API Gateway **no distingue** "no se quien eres" de
+> "se quien eres pero no puedes".
+>
+> Quien si lo distingue es **Spring Security**: al invocar la Lambda
+> directamente con ese mismo token, responde **403**. Es decir, la segunda capa
+> no solo repite la validacion: da un diagnostico que la primera no da.
+>
+> Las dos ultimas columnas de la fila son, ademas, **Defense in Depth**: si
+> alguien alcanza la funcion sin pasar por API Gateway, sigue necesitando un
+> token valido con el scope correcto. Los comandos y su salida estan en
+> [`ANEXO-EA1.md`](ANEXO-EA1.md).
 
 ### Por que el id token da 401 y no 200
 
@@ -146,6 +163,20 @@ mantener la configuracion en una sola pieza legible: ese literal tiene que
 coincidir **caracter por caracter** en cuatro sitios (los dos App Clients,
 `AuthorizationScopes` en `aws/api.yaml`, el `hasAuthority` de Spring y la lista
 de scopes de Amplify), y duplicarlo duplica tambien las oportunidades de error.
+
+### Un error que solo aparecia desplegado
+
+Durante la verificacion, `GET /api/libros/L-999` devolvia **403 con cuerpo
+vacio** en vez del 404 de Spring. La causa: cuando un controlador lanza una
+excepcion, el contenedor **reenvia internamente a `/error`**, y ese reenvio
+vuelve a pasar por las reglas de Spring Security. `/error` no encaja en
+`/api/**`, asi que caia en el `denyAll()` final.
+
+Se arreglo permitiendo el dispatcher `ERROR` en `SecurityConfig`. Lo que lo
+hace interesante es que **los tests de MockMvc pasaban en verde**: MockMvc no
+reproduce ese reenvio. Solo una peticion real contra la aplicacion desplegada
+lo saca a la luz, y es la razon de que el recorrido de verificacion del
+[`ANEXO-EA1.md`](ANEXO-EA1.md) mida cada codigo en vez de darlo por bueno.
 
 ---
 

@@ -70,14 +70,29 @@ los seis casos**, y no hay ni una peticion duplicada.
 | Entorno | Credencial | Lecturas | Crear | Que demuestra |
 |---|---|---|---|---|
 | `aws` | cliente M2M **con** el custom scope | 200 | 201 | el camino completo funciona |
-| `aws-usuario-sin-scope` | access token de usuario (`admin-initiate-auth`) | 403 | 403 | autenticado **pero no autorizado** |
+| `aws-usuario-sin-scope` | access token de usuario (`admin-initiate-auth`) | **401** | **401** | un token valido al que le falta el scope |
 | `aws-id-token` | id token del mismo usuario | 401 | 401 | un id token no autoriza: no lleva claim `scope` |
 | `aws-token-invalido` | `no-es-un-jwt-de-verdad` | 401 | 401 | el authorizer valida la **firma** |
-| `aws-directo` | Function URL + token valido | 200 | 201 | saltandose API Gateway, **Spring** valida igual |
-| `aws-directo-sin-token` | Function URL sin token | 401 | 401 | **Defense in Depth** |
 
-Los dos ultimos solo existen mientras la Function URL de la demo este
-encendida (`EnableBypassDemoUrl=true`).
+**Los codigos estan medidos, no supuestos.** La fila del token sin scope decia
+403 sobre el papel; medida contra el despliegue real, API Gateway responde
+**401**, con el mismo cuerpo `{"message":"Unauthorized"}` que ante un token
+inventado. El 403 por falta de autorizacion **si existe**, pero lo emite Spring
+Security cuando se invoca la Lambda sin pasar por API Gateway. Esta explicado
+en `ANEXO-EA1.md` §3.
+
+### La segunda capa no se prueba con Bruno
+
+Demostrar Defense in Depth exige llamar a la funcion **sin pasar por API
+Gateway**, y eso Bruno no lo puede hacer:
+
+* la via elegante, una Function URL con `AuthType: NONE`, esta **bloqueada por
+  la cuenta de AWS Academy**: devuelve `403 AccessDeniedException` antes de
+  llegar a la funcion, aunque el permiso este bien puesto;
+* la via que si funciona es `aws lambda invoke`, que no es HTTP.
+
+Los comandos y sus resultados (401 / 401 / 401 / **403** / 200) estan en
+`ANEXO-EA1.md` §5.
 
 ---
 
@@ -139,8 +154,11 @@ Detalles que conviene conocer al tocarla:
   como query params desactivados que se activan en la pestana *Params*. No se
   usan variables de entorno para decir *que* se pide: las variables dicen
   *donde* y *con que credencial*.
-* Los distintos cuerpos del POST son **variantes** del mismo body (pestana
-  *Body*), no peticiones nuevas.
+* El POST lleva **un solo cuerpo**, el valido. Los que producen 400, 404 y 409
+  estan en la documentacion de la peticion, listos para pegar. Se intento con
+  la forma `variants` que permite OpenCollection y el runner de terminal **no
+  la envia**: la peticion sale sin cuerpo y responde 400 por el motivo
+  equivocado.
 * `create.yml` deja el id creado en una variable de runtime
   (`bru.setVar("solicitudCreada", …)`) que `get.yml` usa como path param. Por
   eso `bru run` funciona de corrido: las `seq` de la carpeta ordenan create → get.
@@ -155,6 +173,5 @@ Detalles que conviene conocer al tocarla:
 | 403 donde esperabas 200 | El token no trae el custom scope | Igual: regenera los entornos |
 | `solicitudes/get` da 404 | La Lambda se reciclo y el estado en memoria se perdio | Ejecuta `create` otra vez; es esperado |
 | `solicitudes/list` devuelve `[]` | Lo mismo | Esperado: no hay base de datos |
-| Los entornos `aws-directo*` no existen | La Function URL esta apagada | `EnableBypassDemoUrl=true ./aws/pipeline/build-backend.sh` |
 | Error de certificados de OpenSSL | NixOS | `SSL_CERT_DIR=/etc/ssl/certs bru run …` |
 | Falla `responde lo que corresponde a esta credencial` | Es la señal util: el codigo real no es el que esa credencial deberia obtener | Mira el codigo devuelto y compara con la tabla de la §3 |

@@ -70,6 +70,19 @@ class LibroControllerTest {
                 .andExpect(jsonPath("$.length()").value(2));
     }
 
+    /**
+     * OJO CON EL ALCANCE DE ESTE TEST.
+     *
+     * MockMvc no reproduce el reenvio interno a /error que hace un contenedor
+     * de verdad cuando un controlador lanza una excepcion. Por eso este test
+     * pasaba en verde mientras la aplicacion desplegada devolvia 403 en vez de
+     * 404: el reenvio volvia a pasar por las reglas de seguridad y caia en el
+     * denyAll(). Se arreglo permitiendo el dispatcher ERROR en SecurityConfig.
+     *
+     * Moraleja: este test comprueba que el CONTROLADOR responde 404; que ese
+     * 404 llegue al cliente solo lo demuestra una peticion real contra la
+     * aplicacion desplegada (esta medida en ANEXO-EA1.md).
+     */
     @Test
     @DisplayName("un id inexistente responde 404, y lo genera Spring, no la infraestructura")
     void idInexistente() throws Exception {

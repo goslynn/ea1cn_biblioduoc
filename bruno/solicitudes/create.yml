@@ -10,56 +10,24 @@ http:
     - name: Content-Type
       value: application/json
   auth: inherit
+  # Un unico cuerpo, el valido. Los otros casos (400, 404, 409) estan en la
+  # seccion "Otros cuerpos" de la documentacion, listos para pegar en la
+  # pestana Body. Se probo la forma "variants" que permite OpenCollection y el
+  # runner de terminal NO la envia: la peticion sale sin cuerpo y responde 400
+  # por un motivo que no es el que se queria demostrar. Un cuerpo por defecto
+  # que de verdad funcione vale mas que una lista elegante que rompe bru run.
   body:
-    # Variantes del MISMO endpoint: cambiar el cuerpo no justifica otra
-    # peticion. Se selecciona en la pestana Body.
-    - title: valida
-      selected: true
-      body:
-        type: json
-        data: |-
-          {
-            "items": [
-              { "libroId": "L-001", "cantidad": 1 },
-              { "libroId": "L-013", "cantidad": 2 }
-            ],
-            "dias": 14,
-            "motivo": "Material de apoyo para el proyecto de titulo",
-            "sede": "SAN_JOAQUIN"
-          }
-    - title: invalida (400 - motivo corto y demasiados dias)
-      selected: false
-      body:
-        type: json
-        data: |-
-          {
-            "items": [ { "libroId": "L-001", "cantidad": 1 } ],
-            "dias": 90,
-            "motivo": "corto",
-            "sede": "SAN_JOAQUIN"
-          }
-    - title: libro inexistente (404)
-      selected: false
-      body:
-        type: json
-        data: |-
-          {
-            "items": [ { "libroId": "L-999", "cantidad": 1 } ],
-            "dias": 7,
-            "motivo": "Este libro no existe en el catalogo",
-            "sede": "CONCEPCION"
-          }
-    - title: sin ejemplares (409)
-      selected: false
-      body:
-        type: json
-        data: |-
-          {
-            "items": [ { "libroId": "L-005", "cantidad": 1 } ],
-            "dias": 7,
-            "motivo": "Building Microservices tiene cero ejemplares",
-            "sede": "PLAZA_OESTE"
-          }
+    type: json
+    data: |-
+      {
+        "items": [
+          { "libroId": "L-001", "cantidad": 1 },
+          { "libroId": "L-013", "cantidad": 2 }
+        ],
+        "dias": 14,
+        "motivo": "Material de apoyo para el proyecto de titulo",
+        "sede": "SAN_JOAQUIN"
+      }
 
 runtime:
   scripts:
@@ -113,17 +81,18 @@ docs: |
 
   ## Cuerpo
 
-  Cuatro variantes preparadas en la pestana *Body*; la primera es la valida.
+  El cuerpo por defecto es el valido. Los que producen 400, 404 y 409 estan mas
+  abajo, en *Otros cuerpos*.
 
   ## Respuestas
 
   | Codigo | Cuando | Como reproducirlo aqui |
   |---|---|---|
-  | 201 | la solicitud se creo | variante *valida*, entorno `aws` |
-  | 400 | falla la validacion del formulario | variante *invalida* |
+  | 201 | la solicitud se creo | cuerpo por defecto, entorno `aws` |
+  | 400 | falla la validacion del formulario | cuerpo de *Otros cuerpos* |
   | 400 | `sede` no es una de las cinco | cambia `sede` a `LA_LUNA` |
-  | 404 | un `libroId` no existe | variante *libro inexistente* |
-  | 409 | el libro existe pero no tiene ejemplares | variante *sin ejemplares* |
+  | 404 | un `libroId` no existe | cuerpo de *Otros cuerpos* |
+  | 409 | el libro existe pero no tiene ejemplares | cuerpo de *Otros cuerpos* |
   | 401 | token invalido, caducado o id token | entornos `aws-token-invalido` / `aws-id-token` |
   | 403 | token valido sin el scope | entorno `aws-usuario-sin-scope` |
 
@@ -131,6 +100,34 @@ docs: |
 
   ```json
   { "detalles": { "dias": "el prestamo maximo es de 30 dias" } }
+  ```
+
+  ## Otros cuerpos
+
+  Pegalos en la pestana *Body* para reproducir cada caso.
+
+  **400 — motivo corto y demasiados dias**
+  ```json
+  { "items": [ { "libroId": "L-001", "cantidad": 1 } ],
+    "dias": 90, "motivo": "corto", "sede": "SAN_JOAQUIN" }
+  ```
+
+  **400 — sede inexistente** (el enum no deserializa)
+  ```json
+  { "items": [ { "libroId": "L-001", "cantidad": 1 } ],
+    "dias": 7, "motivo": "La sede LA_LUNA no existe", "sede": "LA_LUNA" }
+  ```
+
+  **404 — el libro no esta en el catalogo**
+  ```json
+  { "items": [ { "libroId": "L-999", "cantidad": 1 } ],
+    "dias": 7, "motivo": "Este libro no existe en el catalogo", "sede": "CONCEPCION" }
+  ```
+
+  **409 — el libro existe pero tiene 0 ejemplares**
+  ```json
+  { "items": [ { "libroId": "L-005", "cantidad": 1 } ],
+    "dias": 7, "motivo": "Building Microservices tiene cero ejemplares", "sede": "PLAZA_OESTE" }
   ```
 
   ## Detalle

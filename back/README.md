@@ -106,6 +106,14 @@ el documento de descubrimiento OIDC **al arrancar el contexto**: una llamada de
 red en el arranque en frio, y la aplicacion no levanta si Cognito tarda. Con
 `withJwkSetUri()` la descarga es perezosa y se cachea.
 
+**El dispatcher `ERROR` esta permitido, y hace falta.** Cuando un controlador
+lanza una excepcion, el contenedor reenvia internamente a `/error`, y ese
+reenvio vuelve a pasar por las reglas de seguridad. Sin
+`.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()`, `/error` cae en el
+`denyAll()` final y **todo 404 y 409 sale convertido en un 403 con cuerpo
+vacio**. Paso de verdad en el despliegue, y los tests de MockMvc no lo
+detectaron porque MockMvc no reproduce ese reenvio.
+
 **El CORS lo pone Spring en las respuestas reales.** Con integracion
 `AWS_PROXY`, API Gateway devuelve lo que diga la Lambda y no puede anadir
 cabeceras. Asi que el reparto es: el preflight `OPTIONS` lo responde API

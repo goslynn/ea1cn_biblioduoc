@@ -955,6 +955,24 @@ La tabla del §12 de la guía, con las dos filas que añade este plan:
 Las dos últimas filas son el ítem 19. Las filas 3 y 4 son el ítem 09 y el 10. La fila 6 es la que
 prueba que la petición llega de verdad al backend.
 
+> **Medición real, y corrige la tabla.** Ejecutado contra un despliegue de este plan
+> (proyecto `biblioteca`, `us-east-1`): un `access_token` válido **sin** el scope exigido recibe
+> **`401`**, no `403`, y con el mismo cuerpo `{"message":"Unauthorized"}` que un token inventado.
+> El authorizer `COGNITO_USER_POOLS` **no distingue** hacia fuera la autenticación de la
+> autorización.
+>
+> El `403` por falta de autorización sí aparece, pero lo emite **Spring Security** al invocar la
+> Lambda sin pasar por API Gateway. Es decir: la fila del `403` pertenece a la **segunda** capa,
+> no a la primera. Eso hace la Fase 12 más valiosa de lo que parecía, porque es la única que
+> distingue los dos casos.
+>
+> Dos avisos más de la misma corrida:
+> * **`403 Missing Authentication Token`** es lo que devuelve API Gateway ante cualquier ruta sin
+>   recurso declarado. Un `403` inesperado suele ser una ruta que falta, no un problema de token.
+> * En AWS Academy, una **Function URL con `AuthType: NONE` está bloqueada por la cuenta**
+>   (`403 AccessDeniedException`) aunque el `AWS::Lambda::Permission` sea correcto. La demo de la
+>   Fase 13 se hace con `aws lambda invoke`, que también se salta el authorizer.
+
 ---
 
 ## 8. Mapeo checklist EA1 → dónde se cumple

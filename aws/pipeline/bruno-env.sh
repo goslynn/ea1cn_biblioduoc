@@ -153,9 +153,14 @@ escribe_entorno aws.yml aws \
   "Cliente M2M con el custom scope. Es el unico caso que debe funcionar de punta a punta: pasa el authorizer de API Gateway y tambien Spring Security." \
   "$API_ENDPOINT" "$TOKEN_M2M" 200 201
 
+# MEDIDO, no supuesto: la guia dice "403 o rechazo de autorizacion segun
+# configuracion". El authorizer COGNITO_USER_POOLS de API Gateway responde
+# 401 {"message":"Unauthorized"} cuando el token es valido pero sus scopes no
+# incluyen el exigido. El 403 por falta de autorizacion SI aparece, pero lo da
+# SPRING SECURITY cuando se llama a la Lambda directamente. Ver ANEXO-EA1.md.
 escribe_entorno aws-usuario-sin-scope.yml aws-usuario-sin-scope \
-  "Access token de un USUARIO real obtenido con admin-initiate-auth. Esta bien firmado y no ha caducado, pero ese flujo no emite custom scopes: API Gateway lo rechaza por AUTORIZACION, no por autenticacion." \
-  "$API_ENDPOINT" "$TOKEN_USUARIO" 403 403
+  "Access token de un USUARIO real obtenido con admin-initiate-auth. Esta bien firmado y no ha caducado, pero ese flujo no emite custom scopes. API Gateway lo rechaza con 401 (medido): no distingue este caso del de un token invalido. Quien si distingue autenticacion de autorizacion es Spring, con un 403, cuando se llama a la Lambda sin pasar por el gateway." \
+  "$API_ENDPOINT" "$TOKEN_USUARIO" 401 401
 
 escribe_entorno aws-id-token.yml aws-id-token \
   "ID TOKEN del mismo usuario. Sirve para saber QUIEN es, no para autorizar: no lleva claim scope, y el metodo exige uno. Es la diferencia entre id_token y access_token, comprobada en vez de recitada." \
@@ -165,37 +170,41 @@ escribe_entorno aws-token-invalido.yml aws-token-invalido \
   "Una cadena inventada como token. Demuestra que el authorizer valida la FIRMA de verdad y no se limita a mirar si la cabecera existe." \
   "$API_ENDPOINT" "no-es-un-jwt-de-verdad" 401 401
 
-# --- Entornos de la demo de Defense in Depth (solo si la puerta esta abierta) --
+# --- Defense in Depth: por que aqui NO se genera ningun entorno -----------------
+#
+#  La idea original era exponer la Lambda con una Function URL sin autenticacion
+#  (EnableBypassDemoUrl=true) y apuntar Bruno contra ella. MEDIDO en este
+#  laboratorio: AWS responde 403 AccessDeniedException a cualquier peticion a
+#  esa URL, incluso con el AWS::Lambda::Permission correcto para
+#  lambda:InvokeFunctionUrl con Principal "*". La cuenta de AWS Academy prohibe
+#  las Function URL anonimas, y eso se decide ANTES de llegar a la funcion.
+#
+#  La plantilla conserva el parametro porque el codigo es correcto y funciona en
+#  una cuenta sin esa restriccion. Pero la demostracion de Defense in Depth se
+#  hace por la via que el laboratorio si permite: invocar la funcion
+#  directamente con "aws lambda invoke", que tambien se salta por completo el
+#  authorizer de API Gateway. Bruno no habla ese protocolo, asi que esa parte se
+#  ejecuta a mano; los comandos y sus resultados estan en ANEXO-EA1.md.
 if [ -n "$BYPASS_URL" ]; then
-  BASE_DIRECTA="${BYPASS_URL%/}"
-  escribe_entorno aws-directo.yml aws-directo \
-    "Function URL: llega a la Lambda SIN pasar por API Gateway, con un token valido. Responde 200 porque Spring Security valida el token por su cuenta: es la segunda capa haciendo su trabajo." \
-    "$BASE_DIRECTA" "$TOKEN_M2M" 200 201
-
-  escribe_entorno aws-directo-sin-token.yml aws-directo-sin-token \
-    "La misma puerta trasera, sin token. El 401 lo produce SPRING SECURITY, no la infraestructura: es la prueba de Defense in Depth." \
-    "$BASE_DIRECTA" "" 401 401
-else
-  info "sin Function URL activa: no se generan los entornos aws-directo*"
-  info "para la demo de Defense in Depth: EnableBypassDemoUrl=true ./aws/pipeline/build-backend.sh"
-  rm -f "${DESTINO}/aws-directo.yml" "${DESTINO}/aws-directo-sin-token.yml"
+  warn "hay una Function URL activa (${BYPASS_URL})."
+  warn "en AWS Academy responde 403 AccessDenied: apagala con"
+  warn "  EnableBypassDemoUrl=false ./aws/pipeline/build-backend.sh"
 fi
+rm -f "${DESTINO}/aws-directo.yml" "${DESTINO}/aws-directo-sin-token.yml"
 
 log "Entornos listos"
 cat <<EOF
-    La matriz completa, un entorno por credencial:
+    La matriz de seguridad, un entorno por credencial:
 
         cd bruno
         bru run --env aws                     # 200 / 201  todo correcto
-        bru run --env aws-usuario-sin-scope   # 403        autenticado, sin autorizacion
-        bru run --env aws-id-token            # 401        id_token no vale para autorizar
+        bru run --env aws-usuario-sin-scope   # 401        token valido, scope insuficiente
+        bru run --env aws-id-token            # 401        un id_token no autoriza
         bru run --env aws-token-invalido      # 401        firma invalida
+
+    Los cuatro deben pasar en VERDE: cada entorno declara el codigo que espera.
+
+    La segunda capa (Spring Security validando por su cuenta) no se prueba con
+    Bruno, porque exige invocar la Lambda sin pasar por API Gateway. Los
+    comandos estan en ANEXO-EA1.md.
 EOF
-if [ -n "$BYPASS_URL" ]; then
-  cat <<EOF
-        bru run --env aws-directo             # 200 / 201  Spring valida por su cuenta
-        bru run --env aws-directo-sin-token   # 401        lo rechaza Spring Security
-EOF
-fi
-echo
-info "Los seis deben pasar en VERDE: cada entorno declara el codigo que espera."

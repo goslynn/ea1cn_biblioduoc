@@ -1,5 +1,7 @@
 package cl.duoc.biblioteca.config;
 
+import jakarta.servlet.DispatcherType;
+
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -65,6 +67,26 @@ public class SecurityConfig {
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(auth -> auth
+                        // ---------------------------------------------------
+                        //  EL DESPACHO DE ERROR, que cuesta una tarde entera.
+                        //
+                        //  Cuando un controlador lanza una excepcion —por
+                        //  ejemplo el ResponseStatusException(404) de un id que
+                        //  no existe— el contenedor reenvia internamente a
+                        //  /error para construir la respuesta. Ese reenvio pasa
+                        //  OTRA VEZ por estas reglas, con dispatcher type ERROR.
+                        //
+                        //  /error no encaja en "/api/**", asi que caia en el
+                        //  denyAll() del final y el 404 salia convertido en un
+                        //  403. Medido: GET /api/libros/L-999 devolvia 403 con
+                        //  cuerpo vacio, tanto por API Gateway como llamando a
+                        //  la Lambda directamente.
+                        //
+                        //  Permitir el dispatcher ERROR no abre nada: no se
+                        //  puede llegar a /error desde fuera, solo por reenvio
+                        //  interno despues de una peticion YA autorizada.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+
                         // Sonda del Lambda Web Adapter. No se publica en API
                         // Gateway y no revela nada. Ver SaludController.
                         .requestMatchers("/health").permitAll()

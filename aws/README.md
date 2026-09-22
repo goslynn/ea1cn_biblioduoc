@@ -206,26 +206,50 @@ stack en `DELETE_FAILED`.
 
 ## 5. La demo de Defense in Depth
 
-```sh
-# 1. Abrir la puerta trasera
-EnableBypassDemoUrl=true ./aws/pipeline/build-backend.sh
-#    imprime la BypassUrl, que llega a la Lambda sin pasar por API Gateway
+### Lo que se intento primero, y por que no sirve aqui
 
-# 2. Regenerar los entornos de Bruno (ahora incluyen los dos casos "directo")
-./aws/pipeline/bruno-env.sh
+`backend.yaml` tiene el parametro `EnableBypassDemoUrl`, que crea una
+`AWS::Lambda::Url` con `AuthType: NONE` mas su `AWS::Lambda::Permission` para
+`lambda:InvokeFunctionUrl` con `Principal: "*"`. Se activo y se midio:
 
-# 3. Comprobar las dos caras
-cd bruno
-bru run --env aws-directo-sin-token   # 401 -> lo rechaza SPRING SECURITY
-bru run --env aws-directo             # 200 -> con token valido, Spring lo acepta
-
-# 4. Cerrar la puerta
-EnableBypassDemoUrl=false ./aws/pipeline/build-backend.sh
+```
+HTTP/1.1 403 Forbidden
+x-amzn-ErrorType: AccessDeniedException
 ```
 
-El matiz que importa: proteger con Spring Security **no equivale** a cerrar la
-red. La puerta seguia existiendo aunque respondiera 401. Cerrarla de verdad es
-el paso 4.
+El permiso se creo bien (`aws lambda get-policy` lo confirma) y `AuthType` es
+`NONE`. Quien rechaza es **la cuenta de AWS Academy**, que prohibe las Function
+URL anonimas, y lo hace antes de llegar a la funcion. La plantilla conserva el
+parametro porque el codigo es correcto y funciona en una cuenta sin esa
+restriccion.
+
+### La via que si permite el laboratorio
+
+`aws lambda invoke` tambien se salta API Gateway por completo, que es lo que la
+demostracion necesita:
+
+```sh
+TOKEN=$(python3 -c "import re;print(re.search(r'name: ACCESS_TOKEN\n    value: \"([^\"]*)\"',open('bruno/environments/aws.yml').read()).group(1))")
+
+cat > /tmp/evento.json <<EOF
+{"resource":"/api/libros","path":"/api/libros","httpMethod":"GET",
+ "headers":{"Host":"x","Authorization":"Bearer ${TOKEN}"},
+ "requestContext":{"resourcePath":"/api/libros","httpMethod":"GET","stage":"test"},
+ "body":null,"isBase64Encoded":false}
+EOF
+
+aws lambda invoke --function-name biblioteca-api \
+  --payload fileb:///tmp/evento.json /tmp/salida.json
+python3 -c "import json;print(json.load(open('/tmp/salida.json'))['statusCode'])"
+```
+
+Quitando la cabecera `Authorization`, cambiandola por `Bearer abc` o usando un
+token sin el scope, se obtienen los cuatro casos. Medido: **401 · 401 · 403 ·
+200**. El authorizer no vio ninguna de esas peticiones, y aun asi ninguna
+entrego datos sin un token valido con el scope correcto.
+
+El detalle completo, con la tabla y el matiz de que "vigilada" no es lo mismo
+que "cerrada", esta en `ANEXO-EA1.md` §5.
 
 ---
 
@@ -284,6 +308,10 @@ es por eso, y es la respuesta correcta.
 | `CREATE_FAILED: log group already exists` | La Lambda se adelanto a crear su log group | El `LogGroup` esta declarado en la plantilla; borra el huerfano y reintenta |
 | `ExpiredToken` en cualquier `aws` | Credenciales del lab vencidas | `awsacademy start` |
 | `DELETE_FAILED` en un stack con bucket | El bucket tiene objetos o versiones | `teardown.sh` los vacia primero |
+| Un 404 de Spring llega al cliente como **403 con cuerpo vacio** | El reenvio interno a `/error` vuelve a pasar por Spring Security y cae en el `denyAll()`. **Los tests de MockMvc no lo detectan** | `.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()` en `SecurityConfig` (ya esta) |
+| Un token valido sin el scope devuelve **401 y no 403** | No es un fallo: el authorizer `COGNITO_USER_POOLS` responde asi. **Medido** | Es el comportamiento real; el 403 por autorizacion lo da Spring. Ver `ANEXO-EA1.md` §3 |
+| Un 403 donde esperabas un 404 | API Gateway contesta **403 Missing Authentication Token** a cualquier ruta sin recurso declarado | Antes de mirar el token, comprueba que la ruta exista en `api.yaml` |
+| La Function URL responde `403 AccessDeniedException` | AWS Academy prohibe las Function URL anonimas, sin importar el permiso | Usa `aws lambda invoke` para la demo (§5) |
 | El sitio en S3 responde 403 | Los cuatro flags de `PublicAccessBlock` bloquean la bucket policy | En `web.yaml` estan los cuatro en `false` a proposito |
 | Cognito rechaza el callback | Solo acepta `https://`, con la unica excepcion de `http://localhost` | Usa el endpoint REST de S3, no el *website endpoint* |
 | `ReservedConcurrentExecutions` falla al desplegar | La cuenta del lab no permite reservar concurrencia | Despliega con `ReservedConcurrency=-1` (desactiva la reserva) |

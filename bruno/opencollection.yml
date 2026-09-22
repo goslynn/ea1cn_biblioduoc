@@ -40,14 +40,16 @@ docs: |
   | Entorno | Credencial | Lecturas | Crear | Que demuestra |
   |---|---|---|---|---|
   | `aws` | cliente M2M con el custom scope | 200 | 201 | el camino completo funciona |
-  | `aws-usuario-sin-scope` | access token de usuario (admin-initiate-auth) | 403 | 403 | autenticado **pero no autorizado** |
+  | `aws-usuario-sin-scope` | access token de usuario (admin-initiate-auth) | 401 | 401 | un token valido al que le falta el scope |
   | `aws-id-token` | id token del mismo usuario | 401 | 401 | un id token no sirve para autorizar: no lleva claim `scope` |
   | `aws-token-invalido` | `no-es-un-jwt-de-verdad` | 401 | 401 | el authorizer valida la **firma**, no solo la presencia |
-  | `aws-directo` | Function URL + token valido | 200 | 201 | saltandose API Gateway, **Spring** valida igual |
-  | `aws-directo-sin-token` | Function URL sin token | 401 | 401 | Defense in Depth: lo rechaza **Spring Security** |
 
-  Los dos ultimos existen solo mientras la Function URL de la demo este
-  encendida (`EnableBypassDemoUrl=true`).
+  **Codigos medidos, no supuestos.** La fila del token sin scope decia 403 sobre
+  el papel. Medida contra el despliegue real, API Gateway responde **401**, con
+  el mismo cuerpo que ante un token inventado: desde fuera **no distingue** "no
+  se quien eres" de "se quien eres pero no puedes". El 403 por falta de
+  autorizacion si existe, y lo emite **Spring Security** cuando se invoca la
+  Lambda sin pasar por el gateway. Ver `ANEXO-EA1.md` §3 y §5.
 
   ## Como se generan los entornos
 
@@ -64,10 +66,10 @@ docs: |
 
   ```sh
   cd bruno
-  bru run --env aws                     # 200 / 201
-  bru run --env aws-usuario-sin-scope   # 403
-  bru run --env aws-id-token            # 401
-  bru run --env aws-token-invalido      # 401
+  bru run --env aws                     # 200 / 201   14/14 tests
+  bru run --env aws-usuario-sin-scope   # 401          5/5  tests
+  bru run --env aws-id-token            # 401          5/5  tests
+  bru run --env aws-token-invalido      # 401          5/5  tests
   ```
 
   En NixOS, si OpenSSL se queja del directorio de certificados:
