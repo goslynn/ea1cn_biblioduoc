@@ -132,10 +132,10 @@ description: >-
   ${descripcion}
 variables:
   - name: BASE_URL
-    value: ${base}
+    value: "${base}"
     description: Raiz de la API para este caso.
   - name: ACCESS_TOKEN
-    value: ${token}
+    value: "${token}"
     description: Credencial de este caso. Vacia significa que no hay token que presentar.
   - name: ESPERADO_LECTURA
     value: "${lectura}"
