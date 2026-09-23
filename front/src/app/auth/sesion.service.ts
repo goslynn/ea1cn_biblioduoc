@@ -6,6 +6,8 @@ import {
   signOut,
 } from 'aws-amplify/auth';
 
+import { awsConfig } from '../aws-config';
+
 /** Lo que la aplicacion necesita saber de la sesion actual. */
 export interface EstadoSesion {
   autenticado: boolean;
@@ -38,6 +40,38 @@ export class SesionService {
    */
   async iniciarSesion(): Promise<void> {
     await signInWithRedirect();
+  }
+
+  /**
+   * Manda al usuario a la pantalla de REGISTRO de la Hosted UI.
+   *
+   * Amplify no expone un "signUpWithRedirect": signInWithRedirect siempre
+   * aterriza en /login. Pero /signup es un endpoint mas de la Hosted UI y
+   * acepta exactamente los mismos parametros que /oauth2/authorize, asi que la
+   * URL se arma aqui con los mismos valores que ya usa main.ts para configurar
+   * Amplify. No hay ningun identificador escrito a mano: todos salen de
+   * aws-config.ts, que genera el pipeline.
+   *
+   * QUE PASA DESPUES, Y POR QUE NO HAY QUE PROGRAMAR NADA MAS
+   *   Cognito pide correo y contrasena, crea el usuario UNCONFIRMED y le manda
+   *   un codigo de seis digitos. En cuanto lo teclea, la MISMA pantalla lo
+   *   confirma e inicia sesion, y el navegador vuelve al redirect_uri con
+   *   "?code=...". A partir de ahi es el flujo de siempre: Amplify canjea el
+   *   code por los tokens (PKCE) y la aplicacion arranca con sesion.
+   *
+   *   Por eso se piden aqui los mismos scopes que en el login: el access token
+   *   que sale de este camino tiene que traer el custom scope, o la API
+   *   respondera 401 a un usuario recien registrado.
+   */
+  async registrarse(): Promise<void> {
+    const scopes = ['openid', 'email', 'profile', awsConfig.scope].join(' ');
+    const parametros = new URLSearchParams({
+      client_id: awsConfig.userPoolClientId,
+      response_type: 'code',
+      scope: scopes,
+      redirect_uri: awsConfig.redirectUrl,
+    });
+    window.location.assign(`https://${awsConfig.hostedUiDomain}/signup?${parametros}`);
   }
 
   async cerrarSesion(): Promise<void> {

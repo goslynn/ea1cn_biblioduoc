@@ -1,9 +1,9 @@
-# Biblioteca Duoc · Plataforma interna de prestamos
+# Biblioteca Duoc · Plataforma de prestamos
 
 Aplicacion full stack cloud native en AWS para la asignatura **DSY1107**
-(evaluacion EA1). Permite a la comunidad Duoc **buscar en el catalogo** de la
-biblioteca y **solicitar uno o varios libros** en prestamo, indicando dias,
-motivo y sede de retiro.
+(evaluacion EA1). Permite a la comunidad Duoc **crear una cuenta**, **buscar en
+el catalogo** de la biblioteca y **solicitar uno o varios libros** en prestamo,
+indicando dias, motivo y sede de retiro.
 
 ```
 Angular en S3  ──▶  API Gateway (REST + Cognito)  ──▶  Spring Boot en Lambda
@@ -77,6 +77,29 @@ Se mitiga con `ReservedConcurrentExecutions: 1`, que fuerza una sola instancia
 a la vez. No lo resuelve: la solucion es persistencia (DynamoDB seria la
 natural aqui), y esta fuera del alcance pedido. Es una limitacion **declarada**,
 no un defecto escondido.
+
+### Como se consigue una cuenta
+
+Hay **dos vias**, y conviven a proposito:
+
+| Via | Quien la usa | Verificacion |
+|---|---|---|
+| **Autoservicio**: boton *Crear cuenta* → `/signup` de la Hosted UI | cualquier persona | Cognito manda un **codigo de 6 digitos** al correo indicado; hasta teclearlo la cuenta queda `UNCONFIRMED` y no puede iniciar sesion |
+| **Administrador**: `admin-create-user` desde `bootstrap.sh` | el laboratorio, para la cuenta de demostracion | ninguna: se crea ya confirmada, con contrasena conocida |
+
+Lo habilita `AllowAdminCreateUserOnly: false` en `aws/cognito.yaml`. Ese flag es
+tambien lo que hace aparecer el enlace *Sign up* dentro de la Hosted UI: no se
+configura por separado.
+
+**Para probar el registro hace falta un buzon real.** El codigo se manda de
+verdad, con el remitente por defecto de Cognito (~50 correos al dia por pool,
+sin SES). Una direccion inventada como `alumno@duoc.cl` no recibe nada y la
+cuenta se queda a medias; por eso la cuenta de demostracion se sigue creando por
+la via del administrador, que no depende del correo.
+
+El usuario que se registra solo obtiene **exactamente los mismos permisos** que
+cualquier otro: el App Client del SPA pide el custom scope en los dos caminos,
+asi que su access token sirve para toda la API. No hay roles ni niveles.
 
 ---
 

@@ -13,8 +13,19 @@ AWSTemplateFormatVersion: "2010-09-09"
 #    * M2mClient      -> cliente maquina a maquina (con secreto) que obtiene un
 #                        token por client_credentials, sin navegador. Es el que
 #                        usa la coleccion de Bruno.
-#    * UserPoolDomain -> la Hosted UI: la pantalla de login y los endpoints
-#                        /oauth2/authorize y /oauth2/token.
+#    * UserPoolDomain -> la Hosted UI: la pantalla de login, la de REGISTRO y
+#                        los endpoints /oauth2/authorize, /signup y
+#                        /oauth2/token.
+#
+#  >>> QUIEN PUEDE CREAR CUENTAS <<<
+#    Las dos vias conviven:
+#      * AUTOSERVICIO: cualquiera se registra en /signup de la Hosted UI y
+#        confirma con un codigo que Cognito manda a su correo. Lo habilita
+#        AllowAdminCreateUserOnly: false.
+#      * ADMINISTRADOR: bootstrap.sh crea la cuenta de demostracion con
+#        admin-create-user + admin-set-user-password, sin pasar por el correo.
+#    La primera es la que usa una persona; la segunda la que usa el laboratorio
+#    para tener una cuenta lista sin depender de que llegue ningun mensaje.
 #
 #  >>> POR QUE HACE FALTA UN RESOURCE SERVER (y no basta con el login) <<<
 #    Sin custom scope, TODO token valido del pool abre TODA la API: solo se
@@ -48,6 +59,12 @@ AWSTemplateFormatVersion: "2010-09-09"
 #      http://localhost. Por eso el sitio va en el endpoint REST de S3.
 #    * El CallbackURL debe coincidir CARACTER POR CARACTER con el redirect_uri
 #      que manda Amplify, /index.html incluido.
+#    * El enlace "Sign up" de la Hosted UI NO se configura: aparece o no segun
+#      AllowAdminCreateUserOnly. Con true, /signup responde un error de cliente
+#      invalido aunque la URL este bien formada.
+#    * El remitente por defecto de Cognito tiene un limite de ~50 correos al
+#      dia por pool. Si los registros dejan de recibir el codigo sin que nada
+#      mas cambie, es lo primero que hay que mirar.
 #
 #  DEPENDE DE
 #    Nada. bootstrap.sh le pasa la URL del sitio calculada a partir del
@@ -148,12 +165,42 @@ Resources:
           RequireNumbers: true
           RequireSymbols: false
 
-      # Plataforma INTERNA: nadie se registra solo, las cuentas las crea la
-      # biblioteca. bootstrap.sh crea la cuenta de demostracion con
-      # admin-create-user, que es justo lo que este flag permite y el
-      # autoservicio no.
+      # AUTOSERVICIO DE REGISTRO, ACTIVADO.
+      #
+      # En false, cualquiera puede darse de alta desde la Hosted UI: Cognito
+      # anade solo el enlace "Sign up" y expone /signup. En true (como estaba
+      # antes) ese enlace desaparece y la unica via de alta es
+      # admin-create-user, que es lo que sigue haciendo bootstrap.sh para la
+      # cuenta de demostracion: poner esto en false NO le quita nada al
+      # administrador, solo ANADE la via de autoservicio.
+      #
+      # Lo que hace que el autoservicio no sea un agujero es el par de lineas
+      # de arriba —AutoVerifiedAttributes: email— junto con el
+      # VerificationMessageTemplate de abajo: el usuario se crea UNCONFIRMED y
+      # no puede iniciar sesion hasta teclear el codigo que Cognito manda a su
+      # correo. Quien no controla el buzon no pasa de ahi.
       AdminCreateUserConfig:
-        AllowAdminCreateUserOnly: true
+        AllowAdminCreateUserOnly: false
+
+      # El correo de verificacion: codigo de 6 digitos, no enlace.
+      #
+      #   CONFIRM_WITH_CODE  -> Cognito manda un codigo y la Hosted UI muestra
+      #                         la pantalla donde se teclea. El usuario nunca
+      #                         sale del flujo.
+      #   CONFIRM_WITH_LINK  -> exige un dominio propio verificado en SES; en
+      #                         el Learner Lab no se puede.
+      #
+      # El remitente es el de Cognito por defecto (no hay EmailConfiguration),
+      # que tiene un limite de ~50 correos al dia por pool. De sobra para el
+      # laboratorio, insuficiente para produccion: ahi se configura SES.
+      #
+      # El literal {####} es obligatorio, es donde Cognito inserta el codigo.
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: "Biblioteca Duoc - codigo de verificacion"
+        EmailMessage: |-
+          Tu codigo para activar la cuenta de la Biblioteca Duoc es {####}.
+          Si no has solicitado esta cuenta, ignora este mensaje.
 
       AccountRecoverySetting:
         RecoveryMechanisms:

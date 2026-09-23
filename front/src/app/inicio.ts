@@ -13,4 +13,8 @@ export class Inicio {
   entrar(): void {
     void this.sesion.iniciarSesion();
   }
+
+  registrarse(): void {
+    void this.sesion.registrarse();
+  }
 }

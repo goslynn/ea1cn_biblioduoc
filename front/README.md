@@ -53,9 +53,9 @@ src/
     ├── app.config.ts           provideHttpClient(withInterceptors([...])) + withHashLocation()
     ├── app.routes.ts           /inicio publica; el resto tras authGuard, con lazy loading
     ├── app.ts / app.html       marco: cabecera, navegacion, estado de sesion
-    ├── inicio.ts / .html       portada publica con el boton de login
+    ├── inicio.ts / .html       portada publica: botones de login y de registro
     ├── auth/
-    │   ├── sesion.service.ts   unico punto que habla con Amplify
+    │   ├── sesion.service.ts   unico punto que habla con Amplify (+ /signup)
     │   ├── auth.interceptor.ts anade el Bearer a toda peticion de HttpClient
     │   └── auth.guard.ts       bloquea la NAVEGACION a rutas privadas
     ├── catalogo/               buscador, filtros y seleccion de libros
@@ -82,6 +82,14 @@ del usuario. Quien protege son API Gateway y Spring Security. El Guard esta
 porque hay rutas privadas de verdad y sin el se verian pantallas vacias llenas
 de 401.
 
+**El registro no lo hace Amplify.** No existe un `signUpWithRedirect`:
+`signInWithRedirect()` siempre aterriza en `/login`. Pero `/signup` es un
+endpoint mas de la Hosted UI y acepta los mismos parametros que
+`/oauth2/authorize`, asi que `sesion.service.ts` arma esa URL con los valores de
+`aws-config.ts`. **Tiene que pedir los mismos scopes que el login**, custom
+scope incluido: si se olvida, el usuario se registra bien y la API le responde
+401 a la primera peticion.
+
 **Las rutas llevan `#` (`withHashLocation`).** El sitio se sirve por el endpoint
 REST de S3, que devuelve los objetos que existen y nada mas: con rutas limpias,
 recargar en `/catalogo` daria 404. El *website endpoint* si redirige a
@@ -94,6 +102,8 @@ recargar en `/catalogo` daria 404. El *website endpoint* si redirige a
 Con DevTools abierto en la pestana **Network**:
 
 1. **Iniciar sesion** → Hosted UI de Cognito → vuelve al sitio ya autenticado.
+   (O **Crear cuenta** → `/signup` → codigo de 6 digitos al correo → vuelve ya
+   autenticado, sin pasar por la pantalla de login.)
 2. **Catalogo**: buscar y filtrar. Cada busqueda es una peticion real.
 3. **Agregar** libros y **Completar la solicitud** → 201.
 4. **Mis solicitudes**: aparece lo enviado.

@@ -1,14 +1,25 @@
 <section class="panel portada">
   <h1>Biblioteca Duoc</h1>
   <p>
-    Plataforma interna para consultar el catalogo y solicitar libros en
-    prestamo. El acceso es solo para la comunidad Duoc.
+    Plataforma para consultar el catalogo y solicitar libros en prestamo.
+    Si todavia no tienes cuenta, puedes crearla con tu correo.
   </p>
 
-  <button type="button" (click)="entrar()">Iniciar sesion</button>
+  <div class="acciones">
+    <button type="button" (click)="entrar()">Iniciar sesion</button>
+    <button type="button" class="secundario" (click)="registrarse()">
+      Crear cuenta
+    </button>
+  </div>
 
   <p class="tenue">
-    El boton lleva a la pantalla de Cognito (Hosted UI). Al volver, la
+    Los dos botones llevan a la pantalla de Cognito (Hosted UI). Al volver, la
     aplicacion ya tiene el token y puede consultar la API.
+  </p>
+
+  <p class="tenue">
+    Al crear la cuenta, Cognito envia un codigo de seis digitos al correo que
+    indiques: hay que teclearlo para activarla. La contrasena necesita al menos
+    8 caracteres, con una mayuscula, una minuscula y un numero.
   </p>
 </section>
