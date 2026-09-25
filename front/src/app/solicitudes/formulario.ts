@@ -84,8 +84,8 @@ export class FormularioSolicitud {
     switch (status) {
       case 0:   return 'No hubo respuesta (error de red o de CORS). Mira la pestana Network.';
       case 400: return `HTTP 400: el formulario no paso la validacion del servidor. ${mensaje ?? ''}`;
-      case 401: return 'HTTP 401: falta el token o no es valido. Vuelve a iniciar sesion.';
-      case 403: return 'HTTP 403: el token es valido pero no trae el scope que exige la API.';
+      case 401: return 'HTTP 401: el token falta, no es valido, o no trae el scope que exige la API. Vuelve a iniciar sesion.';
+      case 403: return 'HTTP 403: el gateway no reconoce esa ruta. Si la ruta es correcta, revisa el scope del token.';
       case 404: return `HTTP 404: ${mensaje ?? 'alguno de los libros ya no esta en el catalogo.'}`;
       case 409: return `HTTP 409: ${mensaje ?? 'no quedan ejemplares suficientes.'}`;
       default:  return `HTTP ${status}: no se pudo enviar la solicitud.`;

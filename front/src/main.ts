@@ -26,7 +26,8 @@ Amplify.configure({
           domain: awsConfig.hostedUiDomain,
           // Los tres scopes de OIDC (quien eres) MAS el custom scope (a que
           // tienes derecho). Sin el ultimo, el login funciona pero la API
-          // responde 403: es el error mas comun de esta arquitectura.
+          // responde 401: es el error mas comun de esta arquitectura, y el mas
+          // confuso, porque es el mismo codigo que da un token invalido.
           scopes: ['openid', 'email', 'profile', awsConfig.scope],
           redirectSignIn: [awsConfig.redirectUrl],
           redirectSignOut: [awsConfig.redirectUrl],

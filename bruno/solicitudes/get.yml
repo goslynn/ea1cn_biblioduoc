@@ -57,7 +57,7 @@ docs: |
   | 200 | la solicitud existe en memoria | ejecutar `create` antes |
   | 404 | el id no existe, o la Lambda se reciclo | `id = SOL-9999` |
   | 401 | token invalido o id token | entornos `aws-token-invalido` / `aws-id-token` |
-  | 403 | token valido sin el scope | entorno `aws-usuario-sin-scope` |
+  | 401 | token valido sin el scope: el authorizer no distingue | entorno `aws-usuario-sin-scope` |
 
   ## Detalle
 

@@ -107,8 +107,9 @@ usuario y sin navegador. Es el unico camino automatizable para el caso bueno.
 Parece la via headless obvia… pero **no emite custom scopes**: sus tokens
 llevan `scope: "aws.cognito.signin.user.admin"` y nada mas. Los custom scopes
 solo salen por los endpoints OAuth2. Eso, que parece una limitacion, es justo
-lo que hace falta: da gratis el token "valido pero sin autorizacion" que
-produce el **403**, y de paso el **id token** que produce el **401**.
+lo que hace falta: da gratis el token "valido pero sin autorizacion" —que a
+traves del gateway produce **401**, y **403** solo al invocar la Lambda
+directamente— y de paso el **id token**, que tambien produce **401**.
 
 **3. Ninguna, o una cadena inventada.**
 El 401 mas simple.
@@ -169,7 +170,7 @@ Detalles que conviene conocer al tocarla:
 | Sintoma | Causa mas probable | Solucion |
 |---|---|---|
 | Todo responde 401 en el entorno `aws` | Los tokens caducaron (60 min) | `./aws/pipeline/bruno-env.sh` |
-| 403 donde esperabas 200 | El token no trae el custom scope | Igual: regenera los entornos |
+| 401 donde esperabas 200, con tokens recien generados | El token no trae el custom scope: el authorizer responde igual que ante un token invalido | Comprueba el claim `scope`; el caso vive en el entorno `aws-usuario-sin-scope` |
 | `solicitudes/get` da 404 | La Lambda se reciclo y el estado en memoria se perdio | Ejecuta `create` otra vez; es esperado |
 | `solicitudes/list` devuelve `[]` | Lo mismo | Esperado: no hay base de datos |
 | Error de certificados de OpenSSL | NixOS | `SSL_CERT_DIR=/etc/ssl/certs bru run …` |

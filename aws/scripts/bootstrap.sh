@@ -11,7 +11,8 @@
 #                                           (necesita 1: bucket, issuer, origen)
 #    3. api                              -> necesita el pool y la funcion
 #    4. pipeline/api-deploy.sh           -> publica la API en el stage
-#    5. usuario de demostracion          -> para el login y para el caso "403"
+#    5. usuario de demostracion          -> para el login y para el caso
+#                                           "token sin el custom scope"
 #    6. pipeline/bruno-env.sh            -> entornos de prueba con tokens reales
 #    7. pipeline/publish-web.sh          -> configura, compila y sube el frontend
 #

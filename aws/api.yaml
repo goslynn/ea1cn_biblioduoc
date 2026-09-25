@@ -9,21 +9,30 @@ AWSTemplateFormatVersion: "2010-09-09"
 #    cognito.yaml con backend.yaml, y la unica puerta legitima a la aplicacion.
 #
 #  POR QUE REST API (v1) Y NO HTTP API (v2)
-#    El HTTP API tiene CORS declarativo y authorizer JWT generico: menos YAML,
-#    pero NO tiene AuthorizationScopes por metodo, que es exactamente el
-#    mecanismo que produce el 403 y que distingue autenticacion de
-#    autorizacion. A cambio de mas lineas, la REST API da:
-#      * authorizer de tipo COGNITO_USER_POOLS (no un JWT generico),
-#      * scopes exigidos METODO A METODO,
-#      * metodos OPTIONS escritos a mano y GatewayResponses, que son los que
-#        hacen VISIBLE un 401 en el navegador,
-#      * el paso explicito de "desplegar al stage", que en HTTP API no existe.
+#    Cuidado con el argumento facil, porque es falso: el HTTP API SI admite
+#    scopes por ruta (AuthorizationScopes en su authorizer JWT), y ademas los
+#    distingue mejor que esta plantilla, porque responde 401 cuando el token no
+#    valida y 403 cuando valida pero le faltan los scopes. Lo que da la REST API
+#    a cambio de mas lineas es otra cosa:
+#      * authorizer de tipo COGNITO_USER_POOLS, atado al User Pool, en vez de un
+#        authorizer JWT generico,
+#      * GatewayResponses, que el HTTP API no tiene, y que son los que hacen
+#        VISIBLE un 401 en el navegador (ver el reparto del CORS, mas abajo),
+#      * metodos OPTIONS escritos a mano, con integracion MOCK,
+#      * el paso explicito de "desplegar al stage", que en HTTP API no existe
+#        porque se despliega solo.
+#    El coste de la decision es justo lo que se mide abajo: aqui un token sin el
+#    scope tambien recibe 401.
 #
 #  EL CAMINO DE UNA PETICION
 #    GET /test/api/libros  +  Authorization: Bearer <access_token>
 #      +-> ¿existe el recurso?            si no -> 403 "Missing Authentication Token"
 #      +-> Authorizer COGNITO_USER_POOLS  firma/emisor/expiracion malas -> 401
-#      +-> AuthorizationScopes            token sin el scope exigido     -> 403
+#      +-> AuthorizationScopes            token sin el scope exigido     -> 401
+#          MEDIDO, y no es lo que documenta AWS: el authorizer de User Pools
+#          responde 401, con el mismo cuerpo generico que ante un token
+#          invalido. El 403 por falta de scope lo da Spring, y solo se ve
+#          invocando la Lambda directamente. Ver README.md §4 y aws/README.md §5.
 #      +-> Integracion AWS_PROXY (payload 1.0) -> Lambda
 #      +-> Web Adapter -> Tomcat -> el controlador de Spring
 #
@@ -109,7 +118,8 @@ Parameters:
     Default: biblioteca-api/acceso
     Description: >-
       Output "ScopeCompleto" de cognito.yaml. Un token valido SIN este scope
-      recibe 403; uno con el scope pasa. Debe ser identico al que exige Spring.
+      recibe 401 (medido; ver la cabecera); uno con el scope pasa. Debe ser
+      identico al que exige Spring.
 
   AllowOrigin:
     Type: String

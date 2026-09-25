@@ -20,8 +20,9 @@
 #         Emite un access_token SIN custom scopes —solo lleva
 #         "aws.cognito.signin.user.admin"— y ademas un id_token. Parece una
 #         limitacion y es justo lo que hace falta: con el primero se reproduce
-#         el 403 (autenticado pero no autorizado) y con el segundo el 401 (un
-#         id_token no tiene claim "scope", que es lo que exige el metodo).
+#         "autenticado pero no autorizado" —401 a traves del gateway, 403 solo
+#         invocando la Lambda directamente— y con el segundo el 401 de un
+#         id_token (no tiene claim "scope", que es lo que exige el metodo).
 #
 #    3) Ninguna, o una cadena inventada
 #         El 401 mas simple: no hay credencial que validar.
@@ -112,7 +113,7 @@ if [ -f "$USUARIO_ENV" ]; then
     TOKEN_ID="$(printf '%s' "$RESULTADO" | awk '{print $2}')"
     info "tokens del usuario ${DEMO_USER} obtenidos"
   else
-    warn "no se pudieron obtener los tokens del usuario; los entornos 403 y 401-por-id-token quedaran sin token"
+    warn "no se pudieron obtener los tokens del usuario; los entornos aws-usuario-sin-scope y aws-id-token quedaran sin token"
   fi
 else
   warn "no existe ${USUARIO_ENV}; ejecuta ./aws/scripts/bootstrap.sh para crear el usuario de demostracion"

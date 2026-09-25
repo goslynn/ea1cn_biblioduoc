@@ -30,8 +30,10 @@ AWSTemplateFormatVersion: "2010-09-09"
 #  >>> POR QUE HACE FALTA UN RESOURCE SERVER (y no basta con el login) <<<
 #    Sin custom scope, TODO token valido del pool abre TODA la API: solo se
 #    puede distinguir "autenticado" de "anonimo". El scope introduce la segunda
-#    pregunta —"autenticado, si, pero ¿autorizado a esto?"— y es lo unico que
-#    permite obtener un 403 distinto de un 401.
+#    pregunta: "autenticado, si, pero ¿autorizado a esto?". Con el detalle
+#    medido: a traves de API Gateway ese caso tambien responde 401, porque el
+#    authorizer no separa las dos preguntas; el 403 lo emite Spring al invocar
+#    la Lambda directamente (ver README.md §4).
 #
 #    Consecuencia tecnica, y es la buena: cuando api.yaml exige
 #    AuthorizationScopes, API Gateway pide que el token traiga el claim "scope".
@@ -48,7 +50,8 @@ AWSTemplateFormatVersion: "2010-09-09"
 #    * admin-initiate-auth (usuario+clave por CLI) -> access_token SIN el custom
 #      scope: ese flujo NO emite scopes personalizados, solo
 #      "aws.cognito.signin.user.admin". Parece un defecto y es justo lo que
-#      hace falta para provocar el 403 de forma reproducible.
+#      hace falta para provocar de forma reproducible el caso "autenticado pero
+#      no autorizado".
 #
 #  TRAMPAS
 #    * Los dos UserPoolClient necesitan DependsOn: ResourceServer. Sin eso
@@ -221,8 +224,8 @@ Resources:
   #  identico en CUATRO sitios: AllowedOAuthScopes de los dos clientes de aqui
   #  abajo, AuthorizationScopes de los metodos en api.yaml, el hasAuthority de
   #  Spring Security y la lista de scopes de Amplify en el frontend. Un
-  #  caracter distinto en cualquiera de ellos y el resultado es un 403 que
-  #  cuesta horas de encontrar.
+  #  caracter distinto en cualquiera de ellos y el resultado es un rechazo (401
+  #  a traves del gateway) que cuesta horas de encontrar.
   # ---------------------------------------------------------------------------
   ResourceServer:
     Type: AWS::Cognito::UserPoolResourceServer
@@ -261,7 +264,7 @@ Resources:
 
       # Los tres scopes OIDC (identidad) MAS el custom scope (autorizacion).
       # Sin el custom scope aqui, el usuario se autentica pero su access token
-      # sale sin el claim que la API exige: 403.
+      # sale sin el claim que la API exige, y toda llamada recibe 401.
       AllowedOAuthScopes:
         - openid
         - email
@@ -281,7 +284,8 @@ Resources:
         # navegador. Solo se puede invocar con credenciales de AWS
         # (admin-initiate-auth), nunca desde el browser, asi que no debilita el
         # login del frontend. Existe para que bruno-env.sh pueda fabricar el
-        # caso "token valido SIN el custom scope", que es el que produce el 403.
+        # caso "token valido SIN el custom scope": 401 a traves del gateway, y
+        # 403 por Spring al invocar la Lambda directamente.
         - ALLOW_ADMIN_USER_PASSWORD_AUTH
 
       # No revela si un email existe cuando el login falla.

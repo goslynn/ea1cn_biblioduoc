@@ -34,7 +34,7 @@ runtime:
     - type: tests
       code: |-
         // El entorno declara que codigo debe producir SU credencial. Asi la
-        // misma peticion sirve para el 200, el 403 y el 401 sin duplicarla.
+        // misma peticion sirve para el 200 y para los 401 sin duplicarla.
         const esperado = Number(bru.getEnvVar("ESPERADO_LECTURA"));
 
         test("responde lo que corresponde a esta credencial", function () {
@@ -85,7 +85,7 @@ docs: |
   | 401 | token invalido, mal firmado o caducado | entorno `aws-token-invalido` |
   | 401 | se manda un **id token**: no lleva claim `scope` | entorno `aws-id-token` |
   | 401 | sin cabecera `Authorization` | pestana *Auth* → *No Auth* |
-  | 403 | token valido **sin** el scope exigido | entorno `aws-usuario-sin-scope` |
+  | 401 | token valido **sin** el scope exigido | entorno `aws-usuario-sin-scope` |
   | 500 | falta `AWS::Lambda::Permission` en `aws/api.yaml` | (no deberia pasar) |
 
   Una lista vacia **no** es un error: si la busqueda no encuentra nada, el
@@ -93,9 +93,15 @@ docs: |
 
   ## Detalle
 
-  El 401 y el 403 los produce **API Gateway**, antes de invocar la Lambda: no
-  llegan al codigo Java ni aparecen en los logs de la funcion. Si buscas el
+  Los cuatro rechazos los produce **API Gateway**, antes de invocar la Lambda:
+  no llegan al codigo Java ni aparecen en los logs de la funcion. Si buscas el
   error en CloudWatch y no lo encuentras, es por eso.
+
+  Y los cuatro son **401**, incluido el token valido al que solo le falta el
+  scope: el authorizer `COGNITO_USER_POOLS` no distingue autenticacion de
+  autorizacion y devuelve el mismo cuerpo generico en todos los casos. El 403
+  por falta de scope si existe, pero lo emite **Spring Security**, y solo se ve
+  invocando la Lambda directamente (ver `README.md` §4).
 
 examples:
   - name: 200 catalogo completo
@@ -135,14 +141,17 @@ examples:
       body:
         type: json
         data: '{ "message": "Unauthorized" }'
-  - name: 403 token sin el scope
+  - name: 401 token valido sin el scope
     description: >-
       Access token de un usuario obtenido con admin-initiate-auth. Ese flujo no
-      emite custom scopes, asi que el token es valido pero no autoriza esta API.
-      Autenticacion correcta, autorizacion insuficiente.
+      emite custom scopes, asi que el token es valido pero no autoriza esta API:
+      autenticacion correcta, autorizacion insuficiente. El cuerpo es IDENTICO
+      al del id token de arriba, y ese es el hallazgo: desde fuera el authorizer
+      no distingue los dos casos. El 403 que le corresponderia a este caso lo
+      emite Spring, y solo se ve invocando la Lambda directamente.
     response:
-      status: 403
-      statusText: Forbidden
+      status: 401
+      statusText: Unauthorized
       body:
         type: json
-        data: '{ "Message": "User is not authorized to access this resource with an explicit deny" }'
+        data: '{ "message": "Unauthorized" }'

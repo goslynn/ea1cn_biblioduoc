@@ -50,9 +50,10 @@ export class Catalogo implements OnInit {
         this.cargando.set(false);
       },
       error: (fallo) => {
-        // Se muestra el codigo HTTP a proposito: 401 (sin token o token
-        // invalido), 403 (token sin el scope) y 500 se diagnostican distinto,
-        // y esconderlos detras de "algo salio mal" no ayuda a nadie.
+        // Se muestra el codigo HTTP a proposito: 401 (sin token, token
+        // invalido, o token sin el scope), 403 (ruta que el gateway no conoce)
+        // y 500 se diagnostican distinto, y esconderlos detras de "algo salio
+        // mal" no ayuda a nadie.
         this.error.set(this.describir(fallo.status));
         this.resultados.set([]);
         this.cargando.set(false);
@@ -70,8 +71,8 @@ export class Catalogo implements OnInit {
   private describir(status: number): string {
     switch (status) {
       case 0:   return 'No hubo respuesta (error de red o de CORS). Revisa la pestana Network.';
-      case 401: return 'HTTP 401: falta el token o no es valido. Vuelve a iniciar sesion.';
-      case 403: return 'HTTP 403: el token es valido pero no trae el scope que exige la API.';
+      case 401: return 'HTTP 401: el token falta, no es valido, o no trae el scope que exige la API. Vuelve a iniciar sesion.';
+      case 403: return 'HTTP 403: el gateway no reconoce esa ruta. Si la ruta es correcta, revisa el scope del token.';
       default:  return `HTTP ${status}: no se pudo cargar el catalogo.`;
     }
   }

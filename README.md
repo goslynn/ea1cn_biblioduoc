@@ -279,7 +279,7 @@ Se declaran aqui en lugar de esconderlas.
 | Backend en **EC2** (`dnf install corretto`, puerto 8888, SG abierto) | **Lambda + AWS Lambda Web Adapter** | La IP publica cambia en cada reinicio y la instancia muere al cerrar el lab. El **mismo jar** corre con `java -jar` en local y dentro de Lambda, sin tocar codigo ni `pom.xml`. Los logs siguen estando en CloudWatch, y el `execution role` lee el artefacto de S3 sin ninguna Access Key |
 | **SG abriendo 8888 a `0.0.0.0/0`** | Nada expuesto | La propia guia avisa de que no es una arquitectura recomendable |
 | Bypass directo a `<EC2_IP>:8888` | **Function URL temporal** con `AuthType: NONE`, tras un flag de CloudFormation | Reproducible: se enciende, se demuestra y se apaga. El item 19 pasa de *explicable* a **demostrable** |
-| **REST API** | **REST API. Se conserva** | Es la que trae `AuthorizationScopes` por metodo, que es el mecanismo que produce el 403 |
+| **REST API** | **REST API. Se conserva** | No por los scopes por metodo, que el HTTP API tambien admite: por el authorizer `COGNITO_USER_POOLS`, por los `GatewayResponse` que hacen visible un 401 en el navegador, y por el paso explicito de desplegar al stage |
 | Consola web de AWS | **AWS CLI v2 + CloudFormation** | Reproducible, versionado e idempotente |
 | **Postman** | **Bruno**, versionado en el repositorio | Asserts automaticos, vive en git y corre en terminal |
 | `ng serve` en `localhost:4200` | **Sitio publicado en S3** | Se pidio construir solo el acceso publico: no se entrega ningun entorno de desarrollo. `localhost` no esta en las listas blancas de Cognito ni en el CORS |

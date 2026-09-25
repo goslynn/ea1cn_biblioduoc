@@ -128,8 +128,8 @@ del propio gateway los cubren los `GatewayResponses`.
 |---|---|---|
 | 200 / 201 | todo correcto | el controlador |
 | 400 | el formulario no valida, o el JSON no se puede leer | Bean Validation → `ManejadorDeErrores` |
-| 401 | sin token, token invalido, caducado, o un id token | API Gateway **y** Spring Security |
-| 403 | token valido sin el scope exigido | API Gateway **y** Spring Security |
+| 401 | sin token, token invalido, caducado, un id token, o un token valido **sin** el scope | API Gateway **y** Spring Security |
+| 403 | token valido sin el scope, invocando la Lambda **sin** pasar por el gateway | **Spring Security** (`hasAuthority`); por el gateway ese caso es 401 |
 | 404 | el id no existe | **Spring** (`ResponseStatusException`) |
 | 409 | el libro existe pero no tiene ejemplares | el controlador |
 

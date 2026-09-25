@@ -48,8 +48,10 @@ public class SolicitudController {
      *   400  el formulario no valida            -> Bean Validation (@Valid)
      *   404  algun libroId no existe            -> este metodo
      *   409  algun libro no tiene ejemplares    -> este metodo
-     *   401  sin token o token invalido         -> API Gateway / Spring Security
-     *   403  token valido SIN el scope exigido  -> API Gateway
+     *   401  sin token, token invalido, o token
+     *        valido SIN el scope exigido        -> API Gateway / Spring Security
+     *   403  token valido SIN el scope, pero
+     *        solo invocando la Lambda directa   -> Spring Security (hasAuthority)
      *
      * EL SOLICITANTE NO VIENE DEL FORMULARIO. Sale de {@code Principal}, que
      * Spring rellena con el JWT ya validado (claim "sub" para un usuario,
