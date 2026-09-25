@@ -2,7 +2,7 @@
 # Se mantiene fuera de git (regla que ya existia en el commit inicial): son
 # archivos pesados y de terceros. El plan de trabajo se referencia desde el
 # README pero vive solo en local.
-context/
+.context/
 
 # ---- Backend (Maven) ----
 back/target/
@@ -16,6 +16,12 @@ front/dist/
 # Configuracion del frontend GENERADA por aws/pipeline/publish-web.sh a partir
 # de los Outputs de CloudFormation. No se versiona: cambia con cada cuenta AWS.
 front/src/app/aws-config.ts
+
+# Ruta de la vista de diagnostico, GENERADA por el mismo script segun la
+# variable de entorno DEBUG. Es lo que decide si esa pantalla -- que ensena el
+# access token en claro -- llega o no al sitio publicado. Plantillas:
+# diagnostico/rutas.example.ts (apagada) y rutas.example-debug.ts (encendida).
+front/src/app/diagnostico/rutas.ts
 
 # ---- Bruno ----
 # Los entornos los genera aws/pipeline/bruno-env.sh y LLEVAN TOKENS REALES.

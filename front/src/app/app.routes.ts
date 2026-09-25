@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 
 import { authGuard } from './auth/auth.guard';
+import { rutasDiagnostico } from './diagnostico/rutas';
 import { Inicio } from './inicio';
 
 /**
@@ -13,6 +14,12 @@ import { Inicio } from './inicio';
  * Los componentes se cargan con import() (lazy loading): el bundle inicial no
  * arrastra el catalogo ni el formulario, que es lo que ve alguien que todavia
  * no ha entrado.
+ *
+ * La vista de diagnostico es la excepcion, y por eso su ruta no esta escrita
+ * aqui: viene de diagnostico/rutas.ts, que GENERA el pipeline segun la
+ * variable de entorno DEBUG. Con DEBUG=false esa lista llega vacia, nadie
+ * importa el componente y no se compila; pedir /diagnostico a mano cae en el
+ * comodin "**" y redirige al inicio, igual que cualquier URL inventada.
  */
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'inicio' },
@@ -37,12 +44,7 @@ export const routes: Routes = [
     title: 'Mis solicitudes · Biblioteca Duoc',
     loadComponent: () => import('./solicitudes/mis-solicitudes').then((m) => m.MisSolicitudes),
   },
-  {
-    path: 'sesion',
-    canActivate: [authGuard],
-    title: 'Sesion · Biblioteca Duoc',
-    loadComponent: () => import('./sesion/sesion').then((m) => m.Sesion),
-  },
+  ...rutasDiagnostico,
 
   { path: '**', redirectTo: 'inicio' },
 ];

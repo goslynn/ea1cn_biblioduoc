@@ -81,7 +81,7 @@ class LibroControllerTest {
      *
      * Moraleja: este test comprueba que el CONTROLADOR responde 404; que ese
      * 404 llegue al cliente solo lo demuestra una peticion real contra la
-     * aplicacion desplegada (esta medida en ANEXO-EA1.md).
+     * aplicacion desplegada.
      */
     @Test
     @DisplayName("un id inexistente responde 404, y lo genera Spring, no la infraestructura")

@@ -8,21 +8,34 @@ import {
 
 import { awsConfig } from '../aws-config';
 
-/** Lo que la aplicacion necesita saber de la sesion actual. */
+/**
+ * Lo que la aplicacion necesita saber de la sesion actual.
+ *
+ * EL TOKEN NO ESTA AQUI, Y ES A PROPOSITO. Ningun componente de negocio tiene
+ * que tocarlo: el interceptor se lo pide a Amplify justo antes de cada
+ * peticion. Tenerlo en una senal compartida solo abre la puerta a que acabe
+ * pintado en una plantilla, que es exactamente lo que se quiere evitar. Quien
+ * de verdad lo necesita -- la vista de diagnostico, que es opt-in -- se lo
+ * pide a Amplify y se le ve hacerlo.
+ */
 export interface EstadoSesion {
   autenticado: boolean;
   usuario: string;
-  accessToken: string;
 }
 
-const SIN_SESION: EstadoSesion = { autenticado: false, usuario: '', accessToken: '' };
+const SIN_SESION: EstadoSesion = { autenticado: false, usuario: '' };
 
 /**
- * Unico punto de la aplicacion que habla con Amplify Auth.
+ * Unico punto de la aplicacion que habla con Amplify Auth para gestionar la
+ * SESION: entrar, registrarse, salir y saber quien esta dentro.
  *
  * El resto de componentes leen la senal {@link estado} y no saben nada de
  * Cognito: si manana se cambiara de proveedor de identidad, solo cambiaria
  * este archivo.
+ *
+ * Hay dos sitios mas que llaman a Amplify, y los dos piden el TOKEN, no la
+ * sesion: auth.interceptor.ts, que lo necesita en cada peticion, y la vista
+ * de diagnostico, que es opt-in y no se publica salvo con DEBUG=true.
  */
 @Injectable({ providedIn: 'root' })
 export class SesionService {
@@ -82,10 +95,15 @@ export class SesionService {
   /**
    * Refresca la senal leyendo la sesion de Amplify.
    *
-   * SE PIDE EL ACCESS TOKEN, no el id token. El id token dice QUIEN eres; el
-   * access token dice A QUE tienes derecho, y es el unico que lleva el claim
-   * "scope" que exigen API Gateway y Spring. Mandar el id token es el error
-   * numero uno con esta arquitectura, y aqui se responde con un 401.
+   * SE PREGUNTA POR EL ACCESS TOKEN, no por el id token: es el unico que lleva
+   * el claim "scope" que exigen API Gateway y Spring, y por tanto el unico
+   * cuya presencia significa "esta sesion sirve para llamar a la API". Mandar
+   * el id token es el error numero uno con esta arquitectura, y se responde
+   * con un 401.
+   *
+   * El token se mira y se tira: solo hace de testigo de que hay sesion. Quien
+   * lo manda de verdad es el interceptor, que se lo pide a Amplify en cada
+   * peticion y nunca lo lee de aqui.
    */
   async refrescar(): Promise<EstadoSesion> {
     try {
@@ -99,7 +117,6 @@ export class SesionService {
       const nuevo: EstadoSesion = {
         autenticado: true,
         usuario: usuario.signInDetails?.loginId ?? usuario.username,
-        accessToken: token,
       };
       this.estado.set(nuevo);
       return nuevo;
@@ -107,27 +124,6 @@ export class SesionService {
       // No hay sesion: no es un error, es el estado normal antes del login.
       this.estado.set(SIN_SESION);
       return SIN_SESION;
-    }
-  }
-
-  /**
-   * Decodifica el payload del JWT para mostrarlo en pantalla.
-   *
-   * Es un fin PEDAGOGICO: sirve para VER que trae el token (token_use,
-   * client_id, scope, exp). No valida nada, y no debe usarse para decidir
-   * permisos: un JWT se lee sin la clave, pero solo se puede CONFIAR en el
-   * despues de verificar su firma, y eso ocurre en API Gateway y en Spring.
-   */
-  payloadDelToken(token: string): Record<string, unknown> | null {
-    const partes = token.split('.');
-    if (partes.length !== 3) {
-      return null;
-    }
-    try {
-      const base64 = partes[1].replace(/-/g, '+').replace(/_/g, '/');
-      return JSON.parse(atob(base64)) as Record<string, unknown>;
-    } catch {
-      return null;
     }
   }
 }

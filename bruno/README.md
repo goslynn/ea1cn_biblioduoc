@@ -78,8 +78,7 @@ los seis casos**, y no hay ni una peticion duplicada.
 403 sobre el papel; medida contra el despliegue real, API Gateway responde
 **401**, con el mismo cuerpo `{"message":"Unauthorized"}` que ante un token
 inventado. El 403 por falta de autorizacion **si existe**, pero lo emite Spring
-Security cuando se invoca la Lambda sin pasar por API Gateway. Esta explicado
-en `ANEXO-EA1.md` §3.
+Security cuando se invoca la Lambda sin pasar por API Gateway.
 
 ### La segunda capa no se prueba con Bruno
 
@@ -91,8 +90,8 @@ Gateway**, y eso Bruno no lo puede hacer:
   llegar a la funcion, aunque el permiso este bien puesto;
 * la via que si funciona es `aws lambda invoke`, que no es HTTP.
 
-Los comandos y sus resultados (401 / 401 / 401 / **403** / 200) estan en
-`ANEXO-EA1.md` §5.
+Los resultados medidos son **401 / 401 / 401 / 403 / 200**: el authorizer no
+interviene, y aun asi ninguna peticion sin el scope entrega datos.
 
 ---
 

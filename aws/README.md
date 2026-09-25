@@ -92,7 +92,7 @@ En ningun punto del sistema hay una Access Key estatica.
 | `scripts/_comun.sh` | No se ejecuta solo: funciones compartidas (mensajes, requisitos, lectura de Outputs) |
 | `pipeline/build-backend.sh` | `mvnw package` → ZIP → S3 → despliegue del stack del backend |
 | `pipeline/api-deploy.sh` | `create-deployment` al stage. **Imprescindible tras cada cambio de la API** |
-| `pipeline/publish-web.sh` | Genera la config del frontend → `ng build` → `s3 sync` |
+| `pipeline/publish-web.sh` | Genera la config del frontend (y la ruta de diagnostico, segun `DEBUG`) → `ng build` → `s3 sync` |
 | `pipeline/bruno-env.sh` | Obtiene los tokens de cada caso y escribe los entornos de Bruno |
 
 Ningun script prueba la API. Eso es trabajo de Bruno y del navegador.
@@ -180,13 +180,19 @@ Orden que sigue, y por que:
 | `STAGE_NAME` | `test` | Stage de API Gateway |
 | `DEMO_USER` | `alumno@duoc.cl` | Cuenta de demostracion |
 | `SKIP_WEB` | `false` | No compilar ni subir el frontend |
+| `DEBUG` | `false` | La hereda `publish-web.sh`: publica ademas la vista `/diagnostico` |
 | `LAB_ROLE_ARN` | se deduce | Rol de ejecucion de la Lambda |
+
+`DEBUG=true` publica una pantalla que **ensena el access token en claro**. Es
+material para explicar la arquitectura, no parte de la entrega: con el valor
+por defecto esa vista ni siquiera se compila (README raiz §5).
 
 ### Solo una parte
 
 ```sh
 ./aws/pipeline/build-backend.sh    # cambiaste codigo Java
 ./aws/pipeline/publish-web.sh      # cambiaste el frontend
+DEBUG=true ./aws/pipeline/publish-web.sh   # + la vista /diagnostico (no entregable)
 ./aws/pipeline/api-deploy.sh       # cambiaste rutas, metodos o scopes
 ./aws/pipeline/bruno-env.sh        # los tokens caducaron (60 min)
 ```
@@ -246,10 +252,8 @@ python3 -c "import json;print(json.load(open('/tmp/salida.json'))['statusCode'])
 Quitando la cabecera `Authorization`, cambiandola por `Bearer abc` o usando un
 token sin el scope, se obtienen los cuatro casos. Medido: **401 · 401 · 403 ·
 200**. El authorizer no vio ninguna de esas peticiones, y aun asi ninguna
-entrego datos sin un token valido con el scope correcto.
-
-El detalle completo, con la tabla y el matiz de que "vigilada" no es lo mismo
-que "cerrada", esta en `ANEXO-EA1.md` §5.
+entrego datos sin un token valido con el scope correcto: la funcion esta
+vigilada por Spring Security, aunque no este aislada en una red privada.
 
 ---
 
@@ -309,7 +313,7 @@ es por eso, y es la respuesta correcta.
 | `ExpiredToken` en cualquier `aws` | Credenciales del lab vencidas | `awsacademy start` |
 | `DELETE_FAILED` en un stack con bucket | El bucket tiene objetos o versiones | `teardown.sh` los vacia primero |
 | Un 404 de Spring llega al cliente como **403 con cuerpo vacio** | El reenvio interno a `/error` vuelve a pasar por Spring Security y cae en el `denyAll()`. **Los tests de MockMvc no lo detectan** | `.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()` en `SecurityConfig` (ya esta) |
-| Un token valido sin el scope devuelve **401 y no 403** | No es un fallo: el authorizer `COGNITO_USER_POOLS` responde asi. **Medido** | Es el comportamiento real; el 403 por autorizacion lo da Spring. Ver `ANEXO-EA1.md` §3 |
+| Un token valido sin el scope devuelve **401 y no 403** | No es un fallo: el authorizer `COGNITO_USER_POOLS` responde asi. **Medido** | Es el comportamiento real; el 403 por autorizacion lo da Spring |
 | Un 403 donde esperabas un 404 | API Gateway contesta **403 Missing Authentication Token** a cualquier ruta sin recurso declarado | Antes de mirar el token, comprueba que la ruta exista en `api.yaml` |
 | La Function URL responde `403 AccessDeniedException` | AWS Academy prohibe las Function URL anonimas, sin importar el permiso | Usa `aws lambda invoke` para la demo (§5) |
 | El sitio en S3 responde 403 | Los cuatro flags de `PublicAccessBlock` bloquean la bucket policy | En `web.yaml` estan los cuatro en `false` a proposito |

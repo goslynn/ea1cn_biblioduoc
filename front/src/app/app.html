@@ -21,7 +21,9 @@
         @if (seleccion.cantidadTotal() > 0) { <span class="contador">{{ seleccion.cantidadTotal() }}</span> }
       </a>
       <a routerLink="/mis-solicitudes" routerLinkActive="activo">Mis solicitudes</a>
-      <a routerLink="/sesion" routerLinkActive="activo">Sesion</a>
+      @if (hayDiagnostico) {
+        <a routerLink="/diagnostico" routerLinkActive="activo">Diagnostico</a>
+      }
     </nav>
 
     <div class="usuario">

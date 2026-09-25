@@ -27,8 +27,6 @@ CLI v2**, sobre una cuenta de **AWS Academy Learner Lab**.
 | `front/` | Frontend Angular 22 con AWS Amplify, publicado como sitio estatico en S3 |
 | `aws/` | Las cinco plantillas de CloudFormation, los scripts de bootstrap/teardown y los pipelines. Tiene su propio [README](aws/README.md) |
 | `bruno/` | Coleccion de pruebas HTTP versionada, con la matriz de seguridad completa. Tiene su propio [README](bruno/README.md) |
-| `context/` | La guia del profesor y el plan de trabajo que se siguio |
-| [`ANEXO-EA1.md`](ANEXO-EA1.md) | Los 22 items del checklist de autoevaluacion, con la evidencia de cada uno |
 
 ---
 
@@ -74,9 +72,8 @@ Eso significa que:
 * **no se comparten entre instancias concurrentes**.
 
 Se mitiga con `ReservedConcurrentExecutions: 1`, que fuerza una sola instancia
-a la vez. No lo resuelve: la solucion es persistencia (DynamoDB seria la
-natural aqui), y esta fuera del alcance pedido. Es una limitacion **declarada**,
-no un defecto escondido.
+a la vez. No lo resuelve: la solucion es persistencia, y esta fuera del alcance. 
+Es una limitacion **declarada**, no un defecto escondido.
 
 ### Como se consigue una cuenta
 
@@ -91,7 +88,7 @@ Lo habilita `AllowAdminCreateUserOnly: false` en `aws/cognito.yaml`. Ese flag es
 tambien lo que hace aparecer el enlace *Sign up* dentro de la Hosted UI: no se
 configura por separado.
 
-**Para probar el registro hace falta un buzon real.** El codigo se manda de
+**Para probar el registro hace falta una casilla real.** El codigo se manda de
 verdad, con el remitente por defecto de Cognito (~50 correos al dia por pool,
 sin SES). Una direccion inventada como `alumno@duoc.cl` no recibe nada y la
 cuenta se queda a medias; por eso la cuenta de demostracion se sigue creando por
@@ -141,38 +138,30 @@ supuestos. Las dos columnas son las dos capas.
 | sin cabecera `Authorization` | **401** | **401** | authorizer / Spring Security |
 | token inventado (`Bearer abc`) | **401** | **401** | firma invalida, en las dos capas |
 | **id token** | **401** | **401** | falta el claim `scope` / `token_use != access` |
-| access token **sin** el scope | **401** | **403** | ver el recuadro de abajo |
+| access token **sin** el scope | **401** | **403** | ver la nota de abajo |
 | access token **con** el scope | **200** | **200** | nadie: pasa las dos capas |
 | id inexistente, token valido | **404** | **404** | **Spring** |
 | formulario invalido | **400** | — | **Spring**, Bean Validation |
 | libro sin ejemplares | **409** | — | **Spring**, regla de negocio |
 | ruta que no existe | **403** | — | API Gateway, *Missing Authentication Token* |
 
-> ### El hallazgo: el 403 no lo da API Gateway, lo da Spring
->
-> La guia hedge en su §12 — *"403 **o rechazo de autorizacion segun
-> configuracion**"*— y pide medirlo. Medido: cuando el token es valido pero sus
-> scopes no incluyen el exigido, el authorizer `COGNITO_USER_POOLS` responde
-> **401 `{"message":"Unauthorized"}`**, exactamente igual que ante un token
-> inventado. Desde fuera, API Gateway **no distingue** "no se quien eres" de
-> "se quien eres pero no puedes".
->
-> Quien si lo distingue es **Spring Security**: al invocar la Lambda
-> directamente con ese mismo token, responde **403**. Es decir, la segunda capa
-> no solo repite la validacion: da un diagnostico que la primera no da.
->
-> Las dos ultimas columnas de la fila son, ademas, **Defense in Depth**: si
-> alguien alcanza la funcion sin pasar por API Gateway, sigue necesitando un
-> token valido con el scope correcto. Los comandos y su salida estan en
-> [`ANEXO-EA1.md`](ANEXO-EA1.md).
+### 401 por API Gateway, 403 al invocar la Lambda directamente
+
+Un access token valido pero sin el scope requerido responde **401** a traves de
+API Gateway, con el mismo cuerpo generico que un token invalido
+(`{"message":"Unauthorized"}`): el authorizer `COGNITO_USER_POOLS` no distingue
+autenticacion de autorizacion. Invocando la misma Lambda directamente,
+`SecurityConfig` (`hasAuthority`) si hace esa distincion y responde **403**.
+
+Este comportamiento sostiene el segundo nivel de defensa: si algo evita API
+Gateway, la validacion de Spring sigue exigiendo el scope.
 
 ### Por que el id token da 401 y no 200
 
 Cuando un metodo declara `AuthorizationScopes`, API Gateway exige que el token
-traiga el claim `scope`. **Un id token no lo lleva nunca**, por diseno de OIDC.
-Asi que la recomendacion "usa el access token" deja de ser un consejo y pasa a
-ser una restriccion tecnica comprobable. Es la prueba del entorno
-`aws-id-token` de Bruno.
+traiga el claim `scope`. Un id token no lo lleva, por diseno de OIDC, asi que
+usar el access token es un requisito tecnico y no una recomendacion. El
+entorno `aws-id-token` de Bruno verifica este caso.
 
 ### Un solo scope, y por que
 
@@ -187,20 +176,6 @@ coincidir **caracter por caracter** en cuatro sitios (los dos App Clients,
 `AuthorizationScopes` en `aws/api.yaml`, el `hasAuthority` de Spring y la lista
 de scopes de Amplify), y duplicarlo duplica tambien las oportunidades de error.
 
-### Un error que solo aparecia desplegado
-
-Durante la verificacion, `GET /api/libros/L-999` devolvia **403 con cuerpo
-vacio** en vez del 404 de Spring. La causa: cuando un controlador lanza una
-excepcion, el contenedor **reenvia internamente a `/error`**, y ese reenvio
-vuelve a pasar por las reglas de Spring Security. `/error` no encaja en
-`/api/**`, asi que caia en el `denyAll()` final.
-
-Se arreglo permitiendo el dispatcher `ERROR` en `SecurityConfig`. Lo que lo
-hace interesante es que **los tests de MockMvc pasaban en verde**: MockMvc no
-reproduce ese reenvio. Solo una peticion real contra la aplicacion desplegada
-lo saca a la luz, y es la razon de que el recorrido de verificacion del
-[`ANEXO-EA1.md`](ANEXO-EA1.md) mida cada codigo en vez de darlo por bueno.
-
 ---
 
 ## 5. Frontend
@@ -214,6 +189,7 @@ Angular 22 standalone con signals y Amplify Auth 6.
 | Guard | `front/src/app/auth/auth.guard.ts` | Impide **navegar** a las rutas privadas sin sesion |
 | Servicios | `libros.service.ts`, `solicitudes.service.ts` | Encapsulan URL y llamadas; los componentes no saben de HTTP |
 | Configuracion AWS | `aws-config.ts` | **Generada** por el pipeline; no se versiona |
+| Vista de diagnostico | `diagnostico/` | **Opt-in**: solo se compila con `DEBUG=true` (ver abajo) |
 
 ### Guard e interceptor no son lo mismo
 
@@ -224,17 +200,46 @@ saltarselos con la consola abierta. Si el Guard desapareciera, la API seguiria
 igual de protegida, porque quien protege son API Gateway y Spring Security.
 
 El Guard esta porque hay rutas privadas de verdad (`/catalogo`, `/solicitud`,
-`/mis-solicitudes`, `/sesion`): sin el, alguien sin sesion veria pantallas
-vacias llenas de errores 401.
+`/mis-solicitudes`): sin el, alguien sin sesion veria pantallas vacias llenas
+de errores 401.
 
-### La vista `/sesion`
+### La vista de diagnostico: opt-in, y apagada por defecto
 
 No es una pantalla de negocio: existe para ver lo que normalmente esta
 escondido. Muestra el access token, su payload decodificado (`token_use`,
 `client_id`, `scope`) y hace dos llamadas **manuales con `fetch`**, una con la
-cabecera puesta a mano y otra sin ninguna. Es redundante teniendo el
-interceptor, y es deliberado: hasta que no ves la cabecera escrita a mano, el
-interceptor parece magia.
+cabecera puesta a mano y otra sin ninguna. Es redundante respecto del
+interceptor: sirve para mostrar de forma explicita la cabecera que el
+interceptor agrega automaticamente en el resto de la aplicacion.
+
+Y precisamente por eso **no se entrega**: ensena una credencial valida en
+claro, a la vista de cualquiera que mire la pantalla. Es material para explicar
+la arquitectura, no parte del producto. Se enciende a proposito:
+
+```sh
+DEBUG=true ./aws/pipeline/publish-web.sh      # publica ademas /diagnostico
+./aws/pipeline/publish-web.sh                 # por defecto: DEBUG=false
+```
+
+**Apagada no es "escondida": es que no existe.** Lo que la variable genera es
+la RUTA (`front/src/app/diagnostico/rutas.ts`), no un `if`. Con `DEBUG=false`
+esa lista llega vacia, nadie importa el componente, Angular no lo compila y en
+`dist/` no queda ningun chunk que subir al bucket. Medido:
+
+| `DEBUG` | Chunk en `dist/` | Rastro del token en el sitio |
+|---|---|---|
+| `false` | ninguno | cero coincidencias en todo `dist/` |
+| `true` | `chunk-*.js` · 4,47 kB (`diagnostico`) | el que ensena la propia vista |
+
+Un `if` sobre un flag habria dejado el componente compilado y subido al
+bucket: sin enlace y sin ruta, pero descargable. El token sigue viviendo en el
+navegador (lo guarda Amplify, y con DevTools se ve): lo que se quita es que la
+aplicacion lo publique en pantalla por su cuenta.
+
+El token tampoco viaja ya en el estado compartido de la sesion
+(`EstadoSesion` solo lleva `autenticado` y `usuario`): quien lo necesita se lo
+pide a Amplify, y eso ocurre en exactamente dos sitios, el interceptor y esta
+vista.
 
 ### Por que las rutas llevan `#`
 

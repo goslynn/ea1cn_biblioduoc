@@ -11,12 +11,11 @@ archivo que toques.
 ## Skills obligatorios
 
 * **Antes del primer comando `aws` o de tocar cualquier `.yaml` de `aws/`**,
-  invoca el skill `aws-academy-cloudformation`. El plan del repositorio
-  (`context/PLAN-EA1-CLOUD-NATIVE.md`) asume sus reglas y no las repite.
+  invoca el skill `aws-academy-cloudformation`.
 * **Antes de tocar `bruno/`**, invoca el skill `bruno-collections`.
 
-Si un skill contradice al plan o a un README, **gana el skill** y hay que
-corregir el documento.
+Si un skill contradice a un README, **gana el skill** y hay que corregir el
+documento.
 
 ---
 
@@ -39,7 +38,8 @@ Pipelines parciales, cuando ya hay stacks desplegados:
 ./aws/pipeline/bruno-env.sh        # los tokens caducaron (60 min)
 
 SKIP_TESTS=true ./aws/pipeline/build-backend.sh
-SOLO_CONFIG=true ./aws/pipeline/publish-web.sh   # solo genera front/src/app/aws-config.ts
+SOLO_CONFIG=true ./aws/pipeline/publish-web.sh   # solo genera los archivos del frontend
+DEBUG=true       ./aws/pipeline/publish-web.sh   # + la vista /diagnostico (no entregable)
 SKIP_WEB=true    ./aws/scripts/bootstrap.sh
 ```
 
@@ -64,7 +64,10 @@ cd back
 ```sh
 cd front
 npm ci && npm run build            # deja dist/biblioteca-front/browser/
-cp src/app/aws-config.example.ts src/app/aws-config.ts   # para compilar sin desplegar
+
+# para compilar sin desplegar: los dos archivos que genera el pipeline
+cp src/app/aws-config.example.ts        src/app/aws-config.ts
+cp src/app/diagnostico/rutas.example.ts src/app/diagnostico/rutas.ts
 ```
 
 No hay target de test en `angular.json`: `npm test` no funciona. La
@@ -134,8 +137,7 @@ en cuatro sitios: los dos App Clients y el Resource Server de `cognito.yaml`,
 `SecurityConfig.java`, y la lista de scopes de Amplify en el frontend. Se
 propaga por parametros desde el Output `ScopeCompleto`.
 
-Codigos **medidos** contra el despliegue real (no supuestos), documentados en
-`ANEXO-EA1.md`:
+Codigos **medidos** contra el despliegue real (no supuestos):
 
 * Token valido **sin** el scope → API Gateway responde **401**, no 403. El 403
   por autorizacion lo da **Spring**, y solo se ve invocando la Lambda
@@ -165,7 +167,14 @@ Si falta la tercera, un 401 se ve en el navegador como *blocked by CORS*.
 * **Cero identificadores de AWS escritos a mano.** Todo sale de Outputs de
   CloudFormation. Archivos generados y no versionados:
   `front/src/app/aws-config.ts` (plantilla: `aws-config.example.ts`),
-  `bruno/environments/aws*.yml`, `aws/.local/`.
+  `front/src/app/diagnostico/rutas.ts` (plantillas: `rutas.example.ts` y
+  `rutas.example-debug.ts`), `bruno/environments/aws*.yml`, `aws/.local/`.
+* **La vista de diagnostico es opt-in y no se entrega.** Ensena el access token
+  en claro. Solo aparece con `DEBUG=true`, y lo que esa variable genera es la
+  RUTA, no un `if`: apagada, el componente no lo importa nadie y Angular no lo
+  compila, asi que no llega a `dist/` ni como codigo muerto. El token tampoco
+  vive en `EstadoSesion`: lo piden a Amplify el interceptor y esa vista, nadie
+  mas.
 * **Cero recursos `AWS::IAM::*`**: el Learner Lab no permite crear roles.
   `backend.yaml` recibe el ARN de `LabRole` como parametro. Tampoco hay ninguna
   Access Key estatica en el sistema.
@@ -177,9 +186,8 @@ Si falta la tercera, un 401 se ve en el navegador como *blocked by CORS*.
 * **Toda desviacion se declara**, no se esconde: README §7 (canon de la guia) y
   las limitaciones del alcance (solicitudes en un `ConcurrentHashMap`, que se
   pierden en cada arranque en frio).
-* Si cambias comportamiento medido, **vuelve a medirlo** y actualiza
-  `ANEXO-EA1.md`, la tabla del `README.md` §4 y el `ESPERADO_*` de los entornos
-  de Bruno.
+* Si cambias comportamiento medido, **vuelve a medirlo** y actualiza la tabla
+  del `README.md` §4 y el `ESPERADO_*` de los entornos de Bruno.
 
 ---
 
@@ -218,5 +226,3 @@ La tabla completa de sintomas y causas esta en `aws/README.md` §8.
 | `back/README.md` | Decisiones del backend y quien produce cada codigo de respuesta |
 | `front/README.md` | Estructura Angular y recorrido de comprobacion en navegador |
 | `bruno/README.md` | Por que la matriz vive en los entornos y no en peticiones duplicadas |
-| `ANEXO-EA1.md` | Los 22 items del checklist con la evidencia medida de cada uno |
-| `context/` | Guia del profesor y `PLAN-EA1-CLOUD-NATIVE.md`. **No versionado** (esta en `.gitignore`) |

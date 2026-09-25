@@ -157,7 +157,7 @@ escribe_entorno aws.yml aws \
 # configuracion". El authorizer COGNITO_USER_POOLS de API Gateway responde
 # 401 {"message":"Unauthorized"} cuando el token es valido pero sus scopes no
 # incluyen el exigido. El 403 por falta de autorizacion SI aparece, pero lo da
-# SPRING SECURITY cuando se llama a la Lambda directamente. Ver ANEXO-EA1.md.
+# SPRING SECURITY cuando se llama a la Lambda directamente.
 escribe_entorno aws-usuario-sin-scope.yml aws-usuario-sin-scope \
   "Access token de un USUARIO real obtenido con admin-initiate-auth. Esta bien firmado y no ha caducado, pero ese flujo no emite custom scopes. API Gateway lo rechaza con 401 (medido): no distingue este caso del de un token invalido. Quien si distingue autenticacion de autorizacion es Spring, con un 403, cuando se llama a la Lambda sin pasar por el gateway." \
   "$API_ENDPOINT" "$TOKEN_USUARIO" 401 401
@@ -183,8 +183,8 @@ escribe_entorno aws-token-invalido.yml aws-token-invalido \
 #  una cuenta sin esa restriccion. Pero la demostracion de Defense in Depth se
 #  hace por la via que el laboratorio si permite: invocar la funcion
 #  directamente con "aws lambda invoke", que tambien se salta por completo el
-#  authorizer de API Gateway. Bruno no habla ese protocolo, asi que esa parte se
-#  ejecuta a mano; los comandos y sus resultados estan en ANEXO-EA1.md.
+#  authorizer de API Gateway. Bruno no habla ese protocolo, asi que esa parte
+#  se ejecuta a mano.
 if [ -n "$BYPASS_URL" ]; then
   warn "hay una Function URL activa (${BYPASS_URL})."
   warn "en AWS Academy responde 403 AccessDenied: apagala con"
@@ -205,6 +205,6 @@ cat <<EOF
     Los cuatro deben pasar en VERDE: cada entorno declara el codigo que espera.
 
     La segunda capa (Spring Security validando por su cuenta) no se prueba con
-    Bruno, porque exige invocar la Lambda sin pasar por API Gateway. Los
-    comandos estan en ANEXO-EA1.md.
+    Bruno, porque exige invocar la Lambda sin pasar por API Gateway; se hace a
+    mano con "aws lambda invoke".
 EOF

@@ -31,6 +31,8 @@
 #  VARIABLES OPCIONALES
 #    PROJECT_NAME (biblioteca)  AWS_REGION (us-east-1)  STAGE_NAME (test)
 #    DEMO_USER (alumno@duoc.cl) SKIP_WEB (false, para no compilar el frontend)
+#    DEBUG (false): la hereda publish-web.sh y publica la vista /diagnostico,
+#      que ensena el access token en claro. Solo para explicar la arquitectura.
 #
 #  Este script NO prueba nada: al final imprime las URLs y el comando de Bruno.
 #  Las pruebas se hacen con Bruno y con el navegador.

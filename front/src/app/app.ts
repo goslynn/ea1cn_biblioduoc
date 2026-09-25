@@ -3,6 +3,7 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 
 import { SeleccionService } from './catalogo/seleccion.service';
 import { SesionService } from './auth/sesion.service';
+import { rutasDiagnostico } from './diagnostico/rutas';
 
 /** Marco de la aplicacion: cabecera, navegacion y estado de la sesion. */
 @Component({
@@ -16,6 +17,16 @@ export class App implements OnInit {
   private readonly router = inject(Router);
   readonly seleccion = inject(SeleccionService);
   readonly estado = this.sesionService.estado;
+
+  /**
+   * Enlace a la vista de diagnostico en la barra de navegacion.
+   *
+   * Se deduce de la ruta en vez de leer un flag aparte a proposito: asi el
+   * enlace existe SI Y SOLO SI existe la ruta, y no hay dos interruptores que
+   * puedan acabar contradiciendose. El unico interruptor es la variable de
+   * entorno DEBUG del pipeline, que genera diagnostico/rutas.ts.
+   */
+  readonly hayDiagnostico = rutasDiagnostico.length > 0;
 
   /**
    * Al arrancar se pregunta por la sesion. Es tambien el momento en el que

@@ -49,7 +49,7 @@ docs: |
   el mismo cuerpo que ante un token inventado: desde fuera **no distingue** "no
   se quien eres" de "se quien eres pero no puedes". El 403 por falta de
   autorizacion si existe, y lo emite **Spring Security** cuando se invoca la
-  Lambda sin pasar por el gateway. Ver `ANEXO-EA1.md` §3 y §5.
+  Lambda sin pasar por el gateway.
 
   ## Como se generan los entornos
 

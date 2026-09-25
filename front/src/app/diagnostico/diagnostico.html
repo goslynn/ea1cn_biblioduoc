@@ -1,8 +1,13 @@
 <section class="panel">
-  <h1>Sesion y diagnostico</h1>
+  <h1>Diagnostico</h1>
+  <p class="aviso">
+    Pantalla de depuracion, visible solo porque el sitio se publico con
+    <code>DEBUG=true</code>. Ensena el access token en claro: en una
+    publicacion normal no existe ni la ruta ni este enlace.
+  </p>
   <p class="tenue">
-    Esta pantalla existe para ver lo que normalmente esta escondido: el token,
-    lo que lleva dentro y como responde la API segun con que se la llame.
+    Existe para ver lo que normalmente esta escondido: el token, lo que lleva
+    dentro y como responde la API segun con que se la llame.
   </p>
 
   @if (!estado().autenticado) {
@@ -20,7 +25,7 @@
       pero no lleva el claim <code>scope</code>, y el metodo de API Gateway lo
       exige. Con un id token la respuesta seria 401.
     </p>
-    <textarea rows="4" readonly>{{ estado().accessToken }}</textarea>
+    <textarea rows="4" readonly>{{ accessToken() }}</textarea>
 
     <h3>Payload decodificado</h3>
     <p class="tenue">
