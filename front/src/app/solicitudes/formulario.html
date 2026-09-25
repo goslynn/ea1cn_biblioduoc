@@ -7,10 +7,7 @@
 
     <dl class="datos">
       <dt>Solicitante</dt>
-      <dd>
-        <code>{{ solicitud.solicitante }}</code>
-        <span class="tenue">— lo tomo el backend del token, no del formulario</span>
-      </dd>
+      <dd><code>{{ solicitud.solicitante }}</code></dd>
       <dt>Retiro en</dt><dd>{{ solicitud.sede }}</dd>
       <dt>Dias</dt><dd>{{ solicitud.dias }}</dd>
       <dt>Devolver antes del</dt><dd>{{ solicitud.fechaDevolucion }}</dd>
@@ -23,12 +20,6 @@
         <li>{{ linea.cantidad }} x {{ linea.titulo }} <span class="tenue">({{ linea.autor }})</span></li>
       }
     </ul>
-
-    <p class="aviso">
-      Las solicitudes se guardan EN MEMORIA: no hay base de datos. Si la funcion
-      Lambda se recicla por falta de uso, esta solicitud desaparece. Es una
-      limitacion conocida y declarada, no un error.
-    </p>
 
     <div class="acciones">
       <a routerLink="/mis-solicitudes"><button type="button">Ver mis solicitudes</button></a>

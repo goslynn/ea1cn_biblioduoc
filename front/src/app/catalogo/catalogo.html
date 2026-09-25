@@ -1,9 +1,6 @@
 <section class="panel">
   <h1>Catalogo</h1>
-  <p class="tenue">
-    {{ resultados().length }} titulo(s). El filtrado lo resuelve el backend:
-    cada busqueda es una peticion real a la API.
-  </p>
+  <p class="tenue">{{ resultados().length }} titulo(s).</p>
 
   <form class="filtros" (ngSubmit)="buscar()">
     <div class="campo ancho">

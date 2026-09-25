@@ -1,9 +1,5 @@
 <section class="panel">
   <h1>Mis solicitudes</h1>
-  <p class="tenue">
-    El backend devuelve solo las del portador del token: el frontend no manda
-    ningun identificador de usuario.
-  </p>
   <button type="button" class="secundario" (click)="cargar()">Recargar</button>
 </section>
 
@@ -12,9 +8,7 @@
 
 @if (!cargando() && lista().length === 0 && !error()) {
   <p class="aviso">
-    No hay solicitudes a tu nombre. Puede que aun no hayas enviado ninguna, o
-    que la Lambda se haya reciclado: el estado vive en memoria y se pierde en
-    cada arranque en frio.
+    No hay solicitudes a tu nombre todavia.
     <a routerLink="/catalogo">Ir al catalogo</a>.
   </p>
 }

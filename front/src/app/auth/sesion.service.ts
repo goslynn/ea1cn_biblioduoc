@@ -1,6 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import {
   fetchAuthSession,
+  fetchUserAttributes,
   getCurrentUser,
   signInWithRedirect,
   signOut,
@@ -104,6 +105,12 @@ export class SesionService {
    * El token se mira y se tira: solo hace de testigo de que hay sesion. Quien
    * lo manda de verdad es el interceptor, que se lo pide a Amplify en cada
    * peticion y nunca lo lee de aqui.
+   *
+   * "usuario" es SIEMPRE algo legible por humanos (correo o loginId), nunca
+   * el "username" que devuelve getCurrentUser(): con UsernameAttributes:
+   * email en el User Pool, ese campo es el sub en formato UUID, no el correo.
+   * Si no se puede resolver ninguno de los dos, queda vacio en vez de mostrar
+   * el UUID.
    */
   async refrescar(): Promise<EstadoSesion> {
     try {
@@ -113,11 +120,17 @@ export class SesionService {
         this.estado.set(SIN_SESION);
         return SIN_SESION;
       }
-      const usuario = await getCurrentUser();
-      const nuevo: EstadoSesion = {
-        autenticado: true,
-        usuario: usuario.signInDetails?.loginId ?? usuario.username,
-      };
+      const usuarioActual = await getCurrentUser();
+      let usuario = usuarioActual.signInDetails?.loginId ?? '';
+      if (!usuario) {
+        try {
+          const atributos = await fetchUserAttributes();
+          usuario = atributos.email ?? '';
+        } catch {
+          usuario = '';
+        }
+      }
+      const nuevo: EstadoSesion = { autenticado: true, usuario };
       this.estado.set(nuevo);
       return nuevo;
     } catch {
