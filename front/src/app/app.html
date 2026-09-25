@@ -1,6 +1,12 @@
 <header class="cabecera">
   <div class="marca">
-    <span class="logo">📚</span>
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor"
+           stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 6.5c-1.6-1.2-3.6-1.8-6-1.8v13c2.4 0 4.4.6 6 1.8 1.6-1.2 3.6-1.8 6-1.8v-13c-2.4 0-4.4.6-6 1.8Z" />
+        <path d="M12 6.5v13" />
+      </svg>
+    </span>
     <div>
       <strong>Biblioteca Duoc</strong>
       <span class="tenue">Plataforma interna de prestamos</span>
@@ -23,7 +29,10 @@
       <button type="button" class="sutil" (click)="salir()">Cerrar sesion</button>
     </div>
   } @else {
-    <button type="button" (click)="entrar()">Iniciar sesion</button>
+    <div class="acciones-header">
+      <button type="button" class="sutil" (click)="entrar()">Iniciar sesion</button>
+      <button type="button" (click)="registrarse()">Crear cuenta</button>
+    </div>
   }
 </header>
 
